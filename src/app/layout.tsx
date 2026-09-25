@@ -13,8 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Where Should We Eat?",
-  description: "A random restaurant picker for date night.",
+  title: "Dinner Dice",
+  description: "Roll for tonight's table: a random restaurant picker for date night.",
+  // Name shown under the icon when added to an iPhone home screen.
+  appleWebApp: { title: "Dinner Dice", capable: true, statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
