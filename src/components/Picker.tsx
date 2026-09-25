@@ -11,6 +11,7 @@ import type {
   SearchFilters,
 } from "@/lib/types";
 import { useAccount } from "./AccountProvider";
+import { LocationInput } from "./LocationInput";
 import { PlaceActions } from "./PlaceActions";
 import { priceText, ResultCard } from "./ResultCard";
 import { fieldClass as field, labelClass as label } from "./ui";
@@ -41,7 +42,9 @@ export function Picker() {
 
   // Filters
   const [locationText, setLocationText] = useState("");
-  const [gpsOrigin, setGpsOrigin] = useState<LatLng | null>(null);
+  // Set when you use GPS or pick a suggestion; typing clears it (then we look up the text).
+  const [pickedOrigin, setPickedOrigin] = useState<LatLng | null>(null);
+  const [lastOrigin, setLastOrigin] = useState<LatLng | null>(null); // biases suggestions
   const [radius, setRadius] = useState(10);
   const [cuisine, setCuisine] = useState("restaurant");
   const [prices, setPrices] = useState<PriceLevel[]>([]);
@@ -74,7 +77,7 @@ export function Picker() {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setGpsOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setPickedOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setLocationText("📍 My current location");
         setError(null);
         setLocating(false);
@@ -124,7 +127,7 @@ export function Picker() {
     setBusy(true);
     try {
       // 1. Work out where we're searching from.
-      let from = gpsOrigin;
+      let from = pickedOrigin;
       if (!from) {
         if (!locationText.trim()) throw new Error("Enter a location or use your current location.");
         const geo = await getJson<{ location: LatLng }>(
@@ -133,6 +136,7 @@ export function Picker() {
         from = geo.location;
       }
       origin.current = from;
+      setLastOrigin(from);
 
       // 2. Find restaurants that match the filters.
       const filters: SearchFilters = {
@@ -232,15 +236,18 @@ export function Picker() {
             Starting from
           </label>
           <div className="flex gap-2">
-            <input
-              id="location"
-              className={field}
-              placeholder="City, address, or ZIP"
+            <LocationInput
               value={locationText}
-              onChange={(e) => {
-                setLocationText(e.target.value);
-                setGpsOrigin(null); // typing replaces the GPS location
+              onChange={(text) => {
+                setLocationText(text);
+                setPickedOrigin(null); // typing replaces a previously chosen place
               }}
+              onSelect={(loc) => {
+                setPickedOrigin(loc);
+                setError(null);
+              }}
+              onError={setError}
+              near={pickedOrigin ?? lastOrigin}
             />
             <button
               type="button"

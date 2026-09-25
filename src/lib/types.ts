@@ -4,6 +4,9 @@ export type PriceLevel = 1 | 2 | 3 | 4; // $ .. $$$$
 
 export type LatLng = { lat: number; lng: number };
 
+// One row in the location search dropdown.
+export type Suggestion = { id: string; main: string; secondary: string };
+
 // What the user picks in the form.
 export type SearchFilters = {
   location: LatLng;

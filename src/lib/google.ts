@@ -7,6 +7,7 @@ import type {
   RestaurantDetails,
   RestaurantSummary,
   SearchFilters,
+  Suggestion,
 } from "./types";
 
 // All calls to Google live in this file. It only ever runs on the server,
@@ -185,6 +186,63 @@ export async function getDetails(id: string, origin: LatLng): Promise<Restaurant
         text: r.text!.text,
         when: r.relativePublishTimeDescription ?? "",
       })),
+  };
+}
+
+// Suggestions as you type: addresses, cities, businesses, parks, landmarks...
+// `sessionToken` groups the typing + final pick so Google bills it as one session.
+export async function autocomplete(
+  input: string,
+  sessionToken: string,
+  near?: LatLng,
+): Promise<Suggestion[]> {
+  type Prediction = {
+    placeId: string;
+    text?: { text: string };
+    structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } };
+  };
+  const data = await googleFetch<{ suggestions?: { placePrediction?: Prediction }[] }>(
+    `${PLACES_URL}/places:autocomplete`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        input,
+        sessionToken,
+        // Prefer results near the user rather than anywhere in the world.
+        ...(near && {
+          locationBias: {
+            circle: { center: { latitude: near.lat, longitude: near.lng }, radius: 50000 },
+          },
+        }),
+      }),
+    },
+  );
+  return (data.suggestions ?? []).flatMap(({ placePrediction: p }) =>
+    p
+      ? [
+          {
+            id: p.placeId,
+            main: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "",
+            secondary: p.structuredFormat?.secondaryText?.text ?? "",
+          },
+        ]
+      : [],
+  );
+}
+
+// Coordinates of a place chosen from the suggestions. Ends the autocomplete session.
+export async function placeLocation(
+  id: string,
+  sessionToken: string,
+): Promise<{ location: LatLng; label: string }> {
+  const p = await googleFetch<GooglePlace>(
+    `${PLACES_URL}/places/${encodeURIComponent(id)}?sessionToken=${encodeURIComponent(sessionToken)}`,
+    { fields: ["location", "displayName", "formattedAddress"] },
+  );
+  if (!p.location) throw new Error("Place has no location");
+  return {
+    location: { lat: p.location.latitude, lng: p.location.longitude },
+    label: p.displayName?.text ?? p.formattedAddress ?? "",
   };
 }
 
