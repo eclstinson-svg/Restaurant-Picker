@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { CUISINES, POPULAR_CUISINES } from "@/lib/cuisines";
 import { MAX_RADIUS_MILES } from "@/lib/geo";
 import type {
   LatLng,
@@ -11,6 +10,7 @@ import type {
   SearchFilters,
 } from "@/lib/types";
 import { useAccount } from "./AccountProvider";
+import { CuisinePicker } from "./CuisinePicker";
 import { LocationInput } from "./LocationInput";
 import { PlaceActions } from "./PlaceActions";
 import { priceText, ResultCard } from "./ResultCard";
@@ -48,7 +48,6 @@ export function Picker() {
   const [lastOrigin, setLastOrigin] = useState<LatLng | null>(null); // biases suggestions
   const [radius, setRadius] = useState(10);
   const [cuisines, setCuisines] = useState<string[]>([]); // none = any
-  const [showAllCuisines, setShowAllCuisines] = useState(false);
   const [prices, setPrices] = useState<PriceLevel[]>([]);
   const [minRating, setMinRating] = useState(0);
   const [openNow, setOpenNow] = useState(false);
@@ -66,10 +65,6 @@ export function Picker() {
   const matches = useRef<RestaurantSummary[]>([]);
   const origin = useRef<LatLng | null>(null);
   const [remaining, setRemaining] = useState(0);
-
-  function toggleCuisine(type: string) {
-    setCuisines((prev) => (prev.includes(type) ? prev.filter((c) => c !== type) : [...prev, type]));
-  }
 
   function togglePrice(p: PriceLevel) {
     setPrices((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p].sort()));
@@ -232,10 +227,6 @@ export function Picker() {
     }
   }
 
-  const visibleCuisines = showAllCuisines
-    ? CUISINES
-    : CUISINES.filter((c) => POPULAR_CUISINES.includes(c.type) || cuisines.includes(c.type));
-
   return (
     <div className="space-y-5">
       <form
@@ -294,40 +285,12 @@ export function Picker() {
           />
         </div>
 
-        <fieldset>
-          <div className="mb-2 flex items-baseline justify-between">
-            <legend className="text-sm font-medium">Cuisine</legend>
-            {cuisines.length > 0 ? (
-              <button type="button" className="text-xs font-medium text-muted hover:text-accent" onClick={() => setCuisines([])}>
-                Clear ({cuisines.length})
-              </button>
-            ) : (
-              <span className="text-xs text-muted">Any — tap to narrow down</span>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {visibleCuisines.map((c) => (
-              <button
-                key={c.type}
-                type="button"
-                aria-pressed={cuisines.includes(c.type)}
-                onClick={() => toggleCuisine(c.type)}
-                className={chipClass}
-              >
-                {c.label}
-              </button>
-            ))}
-            {(showAllCuisines || visibleCuisines.length < CUISINES.length) && (
-              <button
-                type="button"
-                onClick={() => setShowAllCuisines(!showAllCuisines)}
-                className="rounded-full px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-soft"
-              >
-                {showAllCuisines ? "Fewer" : `+${CUISINES.length - visibleCuisines.length} more`}
-              </button>
-            )}
-          </div>
-        </fieldset>
+        <div>
+          <label htmlFor="cuisine" className={label}>
+            Cuisine <span className="font-normal text-muted">· pick one or more</span>
+          </label>
+          <CuisinePicker selected={cuisines} onChange={setCuisines} />
+        </div>
 
         <div className="grid gap-6 sm:grid-cols-2">
           <fieldset>
