@@ -1,9 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { deleteVisit, listVisits, placeInfoFromSearch, type PlaceInfo, type Visit } from "@/lib/db";
+import {
+  deletePhoto,
+  deleteVisit,
+  listVisits,
+  photosEnabled,
+  placeInfoFromSearch,
+  uploadVisitPhotos,
+  type Photo,
+  type PlaceInfo,
+  type Visit,
+} from "@/lib/db";
 import { useAccount } from "./AccountProvider";
 import { LocationInput } from "./LocationInput";
+import { PhotoGallery, PhotoPicker } from "./Photos";
 import { priceText } from "./ResultCard";
 import { UtensilsIcon } from "./icons";
 import { cardClass, ErrorText, errorMessage, formatDate, primaryButton, secondaryButton } from "./ui";
@@ -83,12 +94,59 @@ function LogVisit() {
   );
 }
 
+// Add photos to a visit that's already logged.
+function AddPhotos({ visitId, onDone }: { visitId: string; onDone: () => void }) {
+  const { couple, reloadSaved } = useAccount();
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload() {
+    if (!couple || files.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await uploadVisitPhotos(couple.id, visitId, files);
+      await reloadSaved(); // refreshes the visit list
+      onDone();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-subtle p-4">
+      <PhotoPicker files={files} onChange={setFiles} />
+      <ErrorText>{error}</ErrorText>
+      <div className="flex gap-2">
+        <button className={`${primaryButton} flex-1`} disabled={busy || files.length === 0} onClick={upload}>
+          {busy ? "Uploading…" : files.length > 0 ? `Upload ${files.length} photo${files.length === 1 ? "" : "s"}` : "Choose photos"}
+        </button>
+        <button className={secondaryButton} onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // "Been there": every visit, newest first, with each person's rating.
 export function History() {
   const { couple, user, saved, reloadSaved } = useAccount();
   const [visits, setVisits] = useState<Visit[] | null>(null);
   const [rating, setRating] = useState<string | null>(null); // visit id being rated
+  const [addingPhotos, setAddingPhotos] = useState<string | null>(null); // visit id
   const [error, setError] = useState<string | null>(null);
+
+  async function removePhoto(photo: Photo) {
+    try {
+      await deletePhoto(photo);
+      await reloadSaved();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
 
   // Load visits, and reload whenever saved places change (e.g. after logging a visit).
   useEffect(() => {
@@ -165,6 +223,12 @@ export function History() {
                   ))}
                 </ul>
 
+                {v.photos.length > 0 && (
+                  <div className="mt-3">
+                    <PhotoGallery photos={v.photos} onDelete={removePhoto} />
+                  </div>
+                )}
+
                 {rating === v.id ? (
                   <div className="mt-3">
                     <VisitForm
@@ -174,11 +238,20 @@ export function History() {
                       onDone={() => setRating(null)}
                     />
                   </div>
+                ) : addingPhotos === v.id ? (
+                  <div className="mt-3">
+                    <AddPhotos visitId={v.id} onDone={() => setAddingPhotos(null)} />
+                  </div>
                 ) : (
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                     <button className="font-medium text-accent" onClick={() => setRating(v.id)}>
                       {mine ? "Edit your rating" : "+ Add your rating"}
                     </button>
+                    {photosEnabled && (
+                      <button className="font-medium text-accent" onClick={() => setAddingPhotos(v.id)}>
+                        + Photos
+                      </button>
+                    )}
                     {v.place.maps_url && (
                       <a href={v.place.maps_url} target="_blank" rel="noopener noreferrer" className="text-muted hover:text-foreground">
                         Maps

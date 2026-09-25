@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { logVisit, rateVisit, type NewRating, type PlaceInfo } from "@/lib/db";
+import { logVisit, photosEnabled, rateVisit, uploadVisitPhotos, type NewRating, type PlaceInfo } from "@/lib/db";
 import { useAccount } from "./AccountProvider";
+import { PhotoPicker } from "./Photos";
 import {
   ErrorText,
   errorMessage,
@@ -68,7 +69,9 @@ export function VisitForm(props: Props) {
   const [ratePartner, setRatePartner] = useState(false);
   const [partnerStars, setPartnerStars] = useState(0);
   const [partnerNote, setPartnerNote] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function save(e: React.FormEvent) {
@@ -84,22 +87,34 @@ export function VisitForm(props: Props) {
     }
     setBusy(true);
     setError(null);
+    let visitId: string;
     try {
       if (props.mode === "new") {
         const ratings: NewRating[] = [{ user_id: user.id, stars, note }];
         if (ratePartner && partner) {
           ratings.push({ user_id: partner.user_id, stars: partnerStars, note: partnerNote });
         }
-        await logVisit(couple.id, props.place, date, ratings);
+        visitId = await logVisit(couple.id, props.place, date, ratings);
       } else {
-        await rateVisit(props.visitId, user.id, stars, note);
+        visitId = props.visitId;
+        await rateVisit(visitId, user.id, stars, note);
       }
-      await reloadSaved();
-      props.onDone();
     } catch (e) {
       setError(errorMessage(e));
       setBusy(false);
+      return;
     }
+    // The visit is saved at this point; a photo problem shouldn't lose it.
+    if (photos.length > 0) {
+      setUploading(true);
+      try {
+        await uploadVisitPhotos(couple.id, visitId, photos);
+      } catch (e) {
+        alert(`Your visit was saved, but some photos didn't upload: ${errorMessage(e)} You can add them from the visit in "Been there".`);
+      }
+    }
+    await reloadSaved();
+    props.onDone();
   }
 
   return (
@@ -152,10 +167,19 @@ export function VisitForm(props: Props) {
         )
       )}
 
+      {photosEnabled && (
+        <div className="space-y-2 border-t border-border pt-4">
+          <span className={labelClass}>
+            Photos <span className="font-normal text-muted">(optional)</span>
+          </span>
+          <PhotoPicker files={photos} onChange={setPhotos} />
+        </div>
+      )}
+
       <ErrorText>{error}</ErrorText>
       <div className="flex gap-2">
         <button className={`${primaryButton} flex-1`} disabled={busy}>
-          {busy ? "Saving…" : "Save"}
+          {uploading ? `Uploading ${photos.length} photo${photos.length === 1 ? "" : "s"}…` : busy ? "Saving…" : "Save"}
         </button>
         <button type="button" className={secondaryButton} onClick={props.onDone}>
           Cancel

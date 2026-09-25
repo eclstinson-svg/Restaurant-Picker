@@ -1,3 +1,4 @@
+import { extensionFor, shrinkPhoto } from "./images";
 import { supabase } from "./supabase";
 import type { ChosenPlace, RestaurantDetails } from "./types";
 
@@ -32,6 +33,7 @@ export type Visit = {
   visited_on: string; // "2026-09-25"
   place: SavedPlace;
   ratings: Rating[];
+  photos: Photo[];
 };
 
 function db() {
@@ -164,7 +166,7 @@ export async function logVisit(
   place: PlaceInfo,
   visitedOn: string,
   ratings: NewRating[],
-) {
+): Promise<string> {
   // Going somewhere takes it off the wishlist.
   const savedPlaceId = await savePlace(coupleId, place, { wishlist: false });
   const visit = required(
@@ -188,6 +190,7 @@ export async function logVisit(
         ),
     );
   }
+  return visit.id;
 }
 
 export async function rateVisit(visitId: string, userId: string, stars: number, note: string) {
@@ -201,28 +204,82 @@ export async function rateVisit(visitId: string, userId: string, stars: number, 
   );
 }
 
+// False until the photos setup (supabase/migrations/003_visit_photos.sql) has been run.
+export let photosEnabled = true;
+
 export async function listVisits(coupleId: string): Promise<Visit[]> {
-  const rows = check(
-    await db()
+  const query = (withPhotos: boolean) =>
+    db()
       .from("visits")
-      .select(`id, visited_on, saved_places(${SAVED_COLUMNS}), visit_ratings(visit_id, user_id, stars, note)`)
+      .select(
+        `id, visited_on, saved_places(${SAVED_COLUMNS}), visit_ratings(visit_id, user_id, stars, note)` +
+          (withPhotos ? ", visit_photos(id, path, created_at)" : ""),
+      )
       .eq("couple_id", coupleId)
       .order("visited_on", { ascending: false })
-      .order("created_at", { ascending: false }),
-  );
-  return (rows as unknown as {
+      .order("created_at", { ascending: false });
+
+  let result = await query(photosEnabled);
+  if (result.error && /visit_photos/.test(result.error.message)) {
+    photosEnabled = false; // table not created yet: keep history working without photos
+    result = await query(false);
+  }
+  const visits = required(result) as unknown as {
     id: string;
     visited_on: string;
     saved_places: SavedRow;
     visit_ratings: Rating[];
-  }[]).map((r) => ({
+    visit_photos?: { id: string; path: string; created_at: string }[];
+  }[];
+
+  // Photos are private, so each one needs a temporary signed link (one request for all).
+  const paths = visits.flatMap((v) => (v.visit_photos ?? []).map((p) => p.path));
+  const urls = new Map<string, string>();
+  if (paths.length > 0) {
+    const signed = required(await db().storage.from(PHOTO_BUCKET).createSignedUrls(paths, 60 * 60));
+    for (const s of signed) if (s.path && s.signedUrl) urls.set(s.path, s.signedUrl);
+  }
+
+  return visits.map((r) => ({
     id: r.id,
     visited_on: r.visited_on,
     place: toSaved(r.saved_places),
     ratings: r.visit_ratings,
+    photos: [...(r.visit_photos ?? [])]
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .flatMap((p) => (urls.has(p.path) ? [{ id: p.id, path: p.path, url: urls.get(p.path)! }] : [])),
   }));
 }
 
 export async function deleteVisit(visitId: string) {
+  // Remove the visit's photo files first (deleting the visit only removes their records).
+  if (photosEnabled) {
+    const photos = required(await db().from("visit_photos").select("path").eq("visit_id", visitId));
+    if (photos.length > 0) {
+      check(await db().storage.from(PHOTO_BUCKET).remove(photos.map((p) => p.path)));
+    }
+  }
   check(await db().from("visits").delete().eq("id", visitId));
+}
+
+// ─── Photos ─────────────────────────────────────────────────────────────
+
+const PHOTO_BUCKET = "visit-photos";
+
+export type Photo = { id: string; path: string; url: string };
+
+// Shrink and upload photos for a visit. Files go in <couple>/<visit>/ so the
+// storage security rules can check the couple.
+export async function uploadVisitPhotos(coupleId: string, visitId: string, files: File[]) {
+  for (const file of files) {
+    const blob = await shrinkPhoto(file);
+    const path = `${coupleId}/${visitId}/${crypto.randomUUID()}.${extensionFor(blob)}`;
+    check(await db().storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: blob.type }));
+    check(await db().from("visit_photos").insert({ visit_id: visitId, couple_id: coupleId, path }));
+  }
+}
+
+export async function deletePhoto(photo: Photo) {
+  check(await db().storage.from(PHOTO_BUCKET).remove([photo.path]));
+  check(await db().from("visit_photos").delete().eq("id", photo.id));
 }

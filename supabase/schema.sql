@@ -171,3 +171,7 @@ revoke execute on function public.create_couple(text) from public, anon;
 revoke execute on function public.join_couple(text, text) from public, anon;
 grant execute on function public.create_couple(text) to authenticated;
 grant execute on function public.join_couple(text, text) to authenticated;
+
+-- ─── Later additions ─────────────────────────────────────────────────────
+-- For a fresh setup, also run supabase/migrations/003_visit_photos.sql
+-- (photo storage). 002 is already included above.
