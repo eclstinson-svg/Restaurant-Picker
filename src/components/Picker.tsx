@@ -79,11 +79,18 @@ export function Picker() {
         setError(null);
         setLocating(false);
       },
-      () => {
-        setError("Couldn't get your location. Check location permissions or type a place.");
+      (err) => {
+        setError(
+          err.code === err.PERMISSION_DENIED
+            ? "Location is blocked for this site. Allow location for your browser in your phone's settings (and for this site in the browser), then try again. Or just type a place."
+            : err.code === err.TIMEOUT
+              ? "Finding your location took too long. Try again, or type a place."
+              : "Your device couldn't figure out where you are. Make sure Location is turned on, or type a place.",
+        );
         setLocating(false);
       },
-      { enableHighAccuracy: false, timeout: 10000 },
+      // Accept a location from the last 5 minutes; it's plenty accurate for this.
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 5 * 60 * 1000 },
     );
   }
 
