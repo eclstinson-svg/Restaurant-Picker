@@ -4,24 +4,53 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { ErrorText, errorMessage, fieldClass, labelClass, primaryButton, secondaryButton } from "./ui";
 
-// Sign in with a code sent by email. A code (rather than a clickable link)
-// works even when the app is installed on a phone's home screen, where
-// email links would open in a different browser.
+// Email + password sign-in. New accounts confirm their email once via the
+// link Supabase sends; after that, signing in never needs email again.
 export function SignIn({ onCancel }: { onCancel: () => void }) {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  async function sendCode(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      const { error } = await supabase!.auth.signInWithOtp({ email: email.trim() });
-      if (error) throw error;
-      setSent(true);
+      if (mode === "signup") {
+        const { data, error } = await supabase!.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { emailRedirectTo: window.location.origin },
+        });
+        if (error) throw error;
+        if (!data.session) {
+          // Email confirmation is on: they need to click the link first.
+          setNotice(
+            `Almost done! We emailed a confirmation link to ${email.trim()}. ` +
+              "Click it, then come back here and sign in.",
+          );
+          setMode("signin");
+        }
+      } else {
+        const { error } = await supabase!.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (error) {
+          if (/not confirmed/i.test(error.message)) {
+            throw new Error("Please click the confirmation link we emailed you first.");
+          }
+          if (/invalid login/i.test(error.message)) {
+            throw new Error("Wrong email or password.");
+          }
+          throw error;
+        }
+      }
+      // On success, AccountProvider notices the new session and moves on.
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -29,29 +58,12 @@ export function SignIn({ onCancel }: { onCancel: () => void }) {
     }
   }
 
-  async function verify(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const { error } = await supabase!.auth.verifyOtp({
-        email: email.trim(),
-        token: code.trim(),
-        type: "email",
-      });
-      if (error) throw error;
-      // AccountProvider notices the new session and moves on to couple setup.
-    } catch (e) {
-      setError(errorMessage(e));
-      setBusy(false);
-    }
-  }
-
-  if (!sent) {
-    return (
-      <form onSubmit={sendCode} className="space-y-3">
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <h2 className="text-lg font-bold">{mode === "signin" ? "Sign in" : "Create your account"}</h2>
+      <div>
         <label htmlFor="email" className={labelClass}>
-          Your email
+          Email
         </label>
         <input
           id="email"
@@ -63,52 +75,47 @@ export function SignIn({ onCancel }: { onCancel: () => void }) {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
         />
-        <ErrorText>{error}</ErrorText>
-        <div className="flex gap-2">
-          <button className={`${primaryButton} flex-1`} disabled={busy}>
-            {busy ? "Sending…" : "Email me a sign-in code"}
-          </button>
-          <button type="button" className={secondaryButton} onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </form>
-    );
-  }
-
-  return (
-    <form onSubmit={verify} className="space-y-3">
-      <label htmlFor="code" className={labelClass}>
-        Enter the code we sent to {email}
-      </label>
-      <input
-        id="code"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        required
-        pattern="[0-9]{6,10}"
-        className={`${fieldClass} text-center text-2xl tracking-[0.4em]`}
-        value={code}
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-        placeholder="••••••"
-      />
+      </div>
+      <div>
+        <label htmlFor="password" className={labelClass}>
+          Password {mode === "signup" && <span className="font-normal text-muted">(at least 8 characters)</span>}
+        </label>
+        <input
+          id="password"
+          type="password"
+          required
+          minLength={mode === "signup" ? 8 : undefined}
+          autoComplete={mode === "signin" ? "current-password" : "new-password"}
+          className={fieldClass}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </div>
+      {notice && (
+        <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+          {notice}
+        </p>
+      )}
       <ErrorText>{error}</ErrorText>
       <div className="flex gap-2">
         <button className={`${primaryButton} flex-1`} disabled={busy}>
-          {busy ? "Checking…" : "Sign in"}
+          {busy ? "One sec…" : mode === "signin" ? "Sign in" : "Create account"}
         </button>
-        <button
-          type="button"
-          className={secondaryButton}
-          onClick={() => {
-            setSent(false);
-            setCode("");
-            setError(null);
-          }}
-        >
-          Back
+        <button type="button" className={secondaryButton} onClick={onCancel}>
+          Cancel
         </button>
       </div>
+      <button
+        type="button"
+        className="text-sm text-accent underline"
+        onClick={() => {
+          setMode(mode === "signin" ? "signup" : "signin");
+          setError(null);
+          setNotice(null);
+        }}
+      >
+        {mode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
+      </button>
     </form>
   );
 }

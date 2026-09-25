@@ -16,8 +16,8 @@ put your key in `.env.local` (see `.env.example`) and restart `npm run dev`.
 ## Accounts & shared history (Supabase)
 
 1. In Supabase → SQL Editor, run `supabase/schema.sql` once.
-2. In Supabase → Authentication → Emails, add `{{ .Token }}` to the
-   "Magic link" and "Confirm signup" templates so emails include a sign-in code.
+2. In Supabase → Authentication → URL Configuration, set the Site URL to the
+   live Vercel address (the email confirmation link sends people there).
 3. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
    to `.env.local` and to Vercel's environment variables, then redeploy.
 
