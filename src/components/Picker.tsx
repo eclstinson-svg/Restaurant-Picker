@@ -10,7 +10,10 @@ import type {
   RestaurantSummary,
   SearchFilters,
 } from "@/lib/types";
+import { useAccount } from "./AccountProvider";
+import { PlaceActions } from "./PlaceActions";
 import { priceText, ResultCard } from "./ResultCard";
+import { fieldClass as field, labelClass as label } from "./ui";
 
 const SHUFFLE_MS = 1200; // how long the name-shuffle animation runs
 
@@ -33,6 +36,9 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function Picker() {
+  const { couple, saved } = useAccount();
+  const [includeVisited, setIncludeVisited] = useState(false);
+
   // Filters
   const [locationText, setLocationText] = useState("");
   const [gpsOrigin, setGpsOrigin] = useState<LatLng | null>(null);
@@ -145,12 +151,26 @@ export function Picker() {
         throw new Error("No restaurants matched. Try a bigger radius or fewer filters.");
       }
 
-      // 3. Shuffle them and reveal the first one.
-      matches.current = results;
-      queue.current = shuffle(results);
+      // 3. Leave out places you've hidden, and (unless asked) places you've been.
+      const hidden = new Set(saved.filter((s) => s.blocked).map((s) => s.place_id));
+      const visited = new Set(saved.filter((s) => s.visitCount > 0).map((s) => s.place_id));
+      const pool = results.filter(
+        (r) => !hidden.has(r.id) && (includeVisited || !visited.has(r.id)),
+      );
+      if (pool.length === 0) {
+        setCurrent(null);
+        throw new Error(
+          `You've already been to (or hidden) all ${results.length} matches! ` +
+            "Tick “Include places we've been”, or widen the search.",
+        );
+      }
+
+      // 4. Shuffle them and reveal the first one.
+      matches.current = pool;
+      queue.current = shuffle(pool);
       const pick = queue.current.shift()!;
       setRemaining(queue.current.length);
-      await reveal(pick, results);
+      await reveal(pick, pool);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -158,11 +178,24 @@ export function Picker() {
     }
   }
 
+  // After "Not for us": drop the current place for good and move on.
+  function hideCurrent() {
+    matches.current = matches.current.filter((m) => m.id !== current?.id);
+    queue.current = queue.current.filter((m) => m.id !== current?.id);
+    if (matches.current.length === 0) {
+      setCurrent(null);
+      setError("That was the last match. Try a new search.");
+      return;
+    }
+    reroll();
+  }
+
   async function reroll() {
     if (queue.current.length === 0) {
       // Everything has been shown once; reshuffle, but don't repeat the current one first.
       queue.current = shuffle(matches.current.filter((m) => m.id !== current?.id));
-      if (current) queue.current.push(matches.current.find((m) => m.id === current.id)!);
+      const same = matches.current.find((m) => m.id === current?.id);
+      if (same) queue.current.push(same);
     }
     const pick = queue.current.shift();
     if (!pick) return;
@@ -177,10 +210,6 @@ export function Picker() {
       setBusy(false);
     }
   }
-
-  const label = "block text-sm font-semibold mb-1.5";
-  const field =
-    "w-full rounded-xl bg-card px-3.5 py-3 ring-1 ring-black/10 dark:ring-white/15 focus:outline-none focus:ring-2 focus:ring-accent";
 
   return (
     <div className="space-y-6">
@@ -296,6 +325,18 @@ export function Picker() {
           Only places open right now
         </label>
 
+        {couple && (
+          <label className="-mt-2 flex items-center gap-2.5 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={includeVisited}
+              onChange={(e) => setIncludeVisited(e.target.checked)}
+              className="h-4 w-4 accent-accent"
+            />
+            Include places we&rsquo;ve been
+          </label>
+        )}
+
         <button
           type="submit"
           disabled={busy}
@@ -319,7 +360,9 @@ export function Picker() {
       )}
 
       {current && !shufflingName && (
-        <ResultCard place={current} sample={sample} onReroll={reroll} remaining={remaining} />
+        <ResultCard place={current} sample={sample} onReroll={reroll} remaining={remaining}>
+          <PlaceActions key={current.id} place={current} onHidden={hideCurrent} />
+        </ResultCard>
       )}
     </div>
   );

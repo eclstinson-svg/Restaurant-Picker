@@ -1,4 +1,4 @@
-import { Picker } from "@/components/Picker";
+import { App } from "@/components/App";
 
 export default function Home() {
   return (
@@ -7,7 +7,7 @@ export default function Home() {
         <h1 className="text-3xl font-extrabold tracking-tight">Where should we eat?</h1>
         <p className="mt-1 text-muted">Set the vibe, then let fate decide.</p>
       </header>
-      <Picker />
+      <App />
     </main>
   );
 }

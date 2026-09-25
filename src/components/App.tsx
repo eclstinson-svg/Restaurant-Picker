@@ -1,0 +1,58 @@
+"use client";
+
+import { useState } from "react";
+import { AccountBar } from "./AccountBar";
+import { AccountProvider, useAccount } from "./AccountProvider";
+import { History } from "./History";
+import { Picker } from "./Picker";
+import { Wishlist } from "./Wishlist";
+
+const TABS = [
+  { id: "pick", label: "🎲 Pick" },
+  { id: "history", label: "✓ Been there" },
+  { id: "wishlist", label: "☆ Want to try" },
+] as const;
+
+type Tab = (typeof TABS)[number]["id"];
+
+export function App() {
+  return (
+    <AccountProvider>
+      <Screens />
+    </AccountProvider>
+  );
+}
+
+function Screens() {
+  const { couple } = useAccount();
+  const [tab, setTab] = useState<Tab>("pick");
+  const current = couple ? tab : "pick"; // other tabs need a couple
+
+  return (
+    <div className="space-y-5">
+      <AccountBar />
+
+      {couple && (
+        <nav className="grid grid-cols-3 gap-1 rounded-full bg-subtle p-1 text-sm font-semibold">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              aria-current={current === t.id ? "page" : undefined}
+              className="rounded-full py-2 text-muted aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-sm"
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {/* Picker stays mounted (just hidden) so switching tabs keeps your current pick. */}
+      <div hidden={current !== "pick"}>
+        <Picker />
+      </div>
+      {current === "history" && <History />}
+      {current === "wishlist" && <Wishlist />}
+    </div>
+  );
+}

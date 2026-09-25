@@ -19,9 +19,10 @@ type Props = {
   sample: boolean;
   onReroll: () => void;
   remaining: number;
+  children?: React.ReactNode; // extra actions (e.g. "We went here") when signed in
 };
 
-export function ResultCard({ place, sample, onReroll, remaining }: Props) {
+export function ResultCard({ place, sample, onReroll, remaining, children }: Props) {
   const meta = [
     place.cuisineLabel,
     priceText(place.price),
@@ -121,6 +122,8 @@ export function ResultCard({ place, sample, onReroll, remaining }: Props) {
             🎲 Re-roll
           </button>
         </div>
+
+        {children}
 
         <p className="text-center text-xs text-muted">
           {remaining > 0
