@@ -8,7 +8,7 @@ import { Picker } from "./Picker";
 import { Wishlist } from "./Wishlist";
 
 const TABS = [
-  { id: "pick", label: "Pick" },
+  { id: "pick", label: "🎲 Roll" },
   { id: "history", label: "Been there" },
   { id: "wishlist", label: "Saved" },
 ] as const;

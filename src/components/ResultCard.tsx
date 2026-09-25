@@ -1,5 +1,5 @@
 import type { RestaurantDetails } from "@/lib/types";
-import { GlobeIcon, MapPinIcon, ShuffleIcon, UtensilsIcon } from "./icons";
+import { GlobeIcon, MapPinIcon, UtensilsIcon } from "./icons";
 import { primaryButton, secondaryButton } from "./ui";
 
 export function priceText(price?: number) {
@@ -49,7 +49,7 @@ export function ResultCard({ place, sample, onReroll, remaining, children }: Pro
 
       <div className="space-y-4 p-5">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-accent">Your pick</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-accent">🎲 The dice say…</p>
           <h2 className="mt-1 text-2xl font-semibold leading-tight tracking-tight">{place.name}</h2>
           <p className="mt-1 text-sm text-muted">{meta.join(" · ")}</p>
         </div>
@@ -114,7 +114,7 @@ export function ResultCard({ place, sample, onReroll, remaining, children }: Pro
             </a>
           )}
           <button onClick={onReroll} className={secondaryButton}>
-            <ShuffleIcon />
+            <span aria-hidden="true">🎲</span>
             Re-roll
           </button>
         </div>

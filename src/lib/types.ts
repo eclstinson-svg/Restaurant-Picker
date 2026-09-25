@@ -7,6 +7,21 @@ export type LatLng = { lat: number; lng: number };
 // One row in the location search dropdown.
 export type Suggestion = { id: string; main: string; secondary: string };
 
+// What we get back after choosing a suggestion.
+export type ChosenPlace = {
+  location: LatLng;
+  label: string;
+  // Only for the restaurant search (logging a visit), since these fields cost more.
+  restaurant?: {
+    id: string;
+    name: string;
+    address: string;
+    cuisineLabel?: string;
+    price?: PriceLevel;
+    googleMapsUrl?: string;
+  };
+};
+
 // What the user picks in the form.
 export type SearchFilters = {
   location: LatLng;

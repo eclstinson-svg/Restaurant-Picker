@@ -98,11 +98,18 @@ create policy "members read ratings" on public.visit_ratings
   for select to authenticated
   using (exists (select 1 from public.visits v where v.id = visit_id and public.is_member(v.couple_id)));
 
-create policy "add own rating" on public.visit_ratings
+-- Either partner can record both people's ratings when logging a visit together.
+create policy "add ratings for your couple" on public.visit_ratings
   for insert to authenticated
   with check (
-    user_id = auth.uid()
-    and exists (select 1 from public.visits v where v.id = visit_id and public.is_member(v.couple_id))
+    exists (
+      select 1
+      from public.visits v
+      join public.couple_members m on m.couple_id = v.couple_id
+      where v.id = visit_ratings.visit_id
+        and m.user_id = visit_ratings.user_id
+        and public.is_member(v.couple_id)
+    )
   );
 
 create policy "edit own rating" on public.visit_ratings

@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { RestaurantDetails } from "./types";
+import type { ChosenPlace, RestaurantDetails } from "./types";
 
 // Everything that reads or writes the shared database lives here.
 // Tables are defined in supabase/schema.sql.
@@ -60,6 +60,17 @@ export function placeInfoFrom(p: RestaurantDetails): PlaceInfo {
     cuisine_label: p.cuisineLabel ?? null,
     price: p.price ?? null,
     maps_url: p.googleMapsUrl,
+  };
+}
+
+export function placeInfoFromSearch(r: NonNullable<ChosenPlace["restaurant"]>): PlaceInfo {
+  return {
+    place_id: r.id,
+    name: r.name,
+    address: r.address || null,
+    cuisine_label: r.cuisineLabel ?? null,
+    price: r.price ?? null,
+    maps_url: r.googleMapsUrl ?? null,
   };
 }
 
@@ -145,13 +156,14 @@ export async function setFlags(
 
 // ─── Visits and ratings ─────────────────────────────────────────────────
 
+export type NewRating = { user_id: string; stars: number; note: string };
+
+// Log a visit with one or both people's ratings.
 export async function logVisit(
   coupleId: string,
   place: PlaceInfo,
   visitedOn: string,
-  userId: string,
-  stars: number,
-  note: string,
+  ratings: NewRating[],
 ) {
   // Going somewhere takes it off the wishlist.
   const savedPlaceId = await savePlace(coupleId, place, { wishlist: false });
@@ -162,7 +174,20 @@ export async function logVisit(
       .select("id")
       .single(),
   );
-  await rateVisit(visit.id, userId, stars, note);
+  if (ratings.length > 0) {
+    check(
+      await db()
+        .from("visit_ratings")
+        .insert(
+          ratings.map((r) => ({
+            visit_id: visit.id,
+            user_id: r.user_id,
+            stars: r.stars,
+            note: r.note.trim() || null,
+          })),
+        ),
+    );
+  }
 }
 
 export async function rateVisit(visitId: string, userId: string, stars: number, note: string) {

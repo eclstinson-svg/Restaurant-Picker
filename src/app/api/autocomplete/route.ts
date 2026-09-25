@@ -1,7 +1,10 @@
 import { autocomplete, hasGoogleKey } from "@/lib/google";
 import type { LatLng } from "@/lib/types";
 
-// GET /api/autocomplete?q=zilker&session=<uuid>[&lat=..&lng=..]  ->  { suggestions }
+// Place types used when searching for somewhere to eat (Google allows up to 5).
+const FOOD_TYPES = ["restaurant", "cafe", "bar", "bakery", "meal_takeaway"];
+
+// GET /api/autocomplete?q=zilker&session=<uuid>[&lat=..&lng=..][&kind=food]  ->  { suggestions }
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const q = params.get("q")?.trim().slice(0, 200);
@@ -9,10 +12,11 @@ export async function GET(request: Request) {
   if (!q || !session || !hasGoogleKey()) {
     return Response.json({ suggestions: [] }); // sample mode: just type and search
   }
+  const onlyTypes = params.get("kind") === "food" ? FOOD_TYPES : undefined;
 
   try {
     return Response.json({
-      suggestions: await autocomplete(q, session, nearUser(request, params)),
+      suggestions: await autocomplete(q, session, nearUser(request, params), onlyTypes),
     });
   } catch {
     return Response.json({ error: "Suggestions unavailable." }, { status: 502 });

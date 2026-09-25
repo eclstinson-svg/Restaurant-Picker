@@ -1,19 +1,31 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import type { LatLng, Suggestion } from "@/lib/types";
+import type { ChosenPlace, LatLng, Suggestion } from "@/lib/types";
 import { fieldClass } from "./ui";
 
 type Props = {
   value: string;
   onChange: (text: string) => void; // typing (clears any previously chosen place)
-  onSelect: (location: LatLng) => void; // a suggestion was chosen
+  onSelect: (place: ChosenPlace) => void; // a suggestion was chosen
   onError: (message: string) => void;
   near: LatLng | null; // bias suggestions toward here
+  kind?: "food"; // only suggest restaurants/cafes/bars (and return their details)
+  id?: string;
+  placeholder?: string;
 };
 
 // A text box that suggests addresses, businesses, parks, etc. as you type.
-export function LocationInput({ value, onChange, onSelect, onError, near }: Props) {
+export function LocationInput({
+  value,
+  onChange,
+  onSelect,
+  onError,
+  near,
+  kind,
+  id = "location",
+  placeholder = "Address, city, park, business…",
+}: Props) {
   const listId = useId();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -39,6 +51,7 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
       session.current ??= crypto.randomUUID();
       const requestId = ++latestRequest.current;
       const params = new URLSearchParams({ q: text, session: session.current });
+      if (kind) params.set("kind", kind);
       if (near) {
         params.set("lat", String(near.lat));
         params.set("lng", String(near.lng));
@@ -65,10 +78,11 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
     setResolving(true);
     try {
       const params = new URLSearchParams({ id: s.id, session: session.current ?? "" });
+      if (kind) params.set("kind", kind);
       const res = await fetch(`/api/place-location?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      onSelect(data.location);
+      onSelect(data as ChosenPlace);
     } catch {
       onError("Couldn't look up that place. Try picking it again.");
     } finally {
@@ -97,7 +111,7 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
   return (
     <div className="relative flex-1">
       <input
-        id="location"
+        id={id}
         ref={inputRef}
         role="combobox"
         aria-expanded={open}
@@ -106,7 +120,7 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
         aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
         autoComplete="off"
         className={fieldClass}
-        placeholder="Address, city, park, business…"
+        placeholder={placeholder}
         value={value}
         aria-busy={resolving}
         onChange={(e) => handleChange(e.target.value)}

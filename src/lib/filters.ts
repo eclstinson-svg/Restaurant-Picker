@@ -20,3 +20,15 @@ export function applyFilters(
     return true;
   });
 }
+
+// Chains show up once per location ("Chipotle" x3). Keep only the closest
+// location of each name so a re-roll doesn't feel like a repeat.
+export function oneLocationPerName(places: RestaurantSummary[]): RestaurantSummary[] {
+  const byName = new Map<string, RestaurantSummary>();
+  for (const p of places) {
+    const key = p.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const existing = byName.get(key);
+    if (!existing || p.distanceMiles < existing.distanceMiles) byName.set(key, p);
+  }
+  return [...byName.values()];
+}

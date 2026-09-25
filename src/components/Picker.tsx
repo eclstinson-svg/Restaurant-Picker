@@ -14,7 +14,7 @@ import { useAccount } from "./AccountProvider";
 import { LocationInput } from "./LocationInput";
 import { PlaceActions } from "./PlaceActions";
 import { priceText, ResultCard } from "./ResultCard";
-import { LocateIcon, ShuffleIcon } from "./icons";
+import { LocateIcon } from "./icons";
 import { cardClass, chipClass, labelClass as label, primaryButton, secondaryButton } from "./ui";
 
 const SHUFFLE_MS = 1200; // how long the name-shuffle animation runs
@@ -150,7 +150,7 @@ export function Picker() {
         radiusMiles: radius,
         cuisines,
         prices,
-        includeUnknownPrice: true,
+        includeUnknownPrice: false,
         minRating,
         openNow,
       };
@@ -214,6 +214,10 @@ export function Picker() {
       const same = matches.current.find((m) => m.id === current?.id);
       if (same) queue.current.push(same);
     }
+    // Never show the same place twice in a row.
+    if (queue.current.length > 1 && queue.current[0].id === current?.id) {
+      queue.current.push(queue.current.shift()!);
+    }
     const pick = queue.current.shift();
     if (!pick) return;
     setRemaining(queue.current.length);
@@ -252,8 +256,8 @@ export function Picker() {
                 setLocationText(text);
                 setPickedOrigin(null); // typing replaces a previously chosen place
               }}
-              onSelect={(loc) => {
-                setPickedOrigin(loc);
+              onSelect={(place) => {
+                setPickedOrigin(place.location);
                 setError(null);
               }}
               onError={setError}
@@ -387,8 +391,8 @@ export function Picker() {
         </div>
 
         <button type="submit" disabled={busy} className={`${primaryButton} w-full py-3 text-base`}>
-          <ShuffleIcon className="h-5 w-5" />
-          {busy ? "Picking…" : "Pick a restaurant"}
+          <span aria-hidden="true" className="text-lg leading-none">🎲</span>
+          {busy ? "Rolling…" : "Roll the dice"}
         </button>
       </form>
 
@@ -403,7 +407,9 @@ export function Picker() {
 
       {shufflingName && (
         <div className={`${cardClass} py-10 text-center`}>
-          <p className="text-xs font-medium uppercase tracking-wider text-muted">Shuffling</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted">
+            <span className="inline-block animate-spin">🎲</span> Rolling
+          </p>
           <p className="mt-2 truncate text-2xl font-semibold text-accent">{shufflingName}</p>
         </div>
       )}

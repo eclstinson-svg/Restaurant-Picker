@@ -1,6 +1,8 @@
 import "server-only";
-import { distanceMiles, METERS_PER_MILE } from "./geo";
+import { cuisineLabel } from "./cuisines";
+import { distanceMiles } from "./geo";
 import type {
+  ChosenPlace,
   LatLng,
   PriceLevel,
   RestaurantDetails,
@@ -41,6 +43,7 @@ type GooglePlace = {
   userRatingCount?: number;
   priceLevel?: string;
   primaryTypeDisplayName?: { text: string };
+  types?: string[];
   currentOpeningHours?: { openNow?: boolean };
   editorialSummary?: { text: string };
   nationalPhoneNumber?: string;
@@ -137,27 +140,72 @@ export async function geocode(address: string): Promise<{ location: LatLng; labe
   return { location: top.geometry.location, label: top.formatted_address };
 }
 
-// Up to 20 restaurants of any of the chosen cuisines inside the radius.
-export async function searchNearby(f: SearchFilters): Promise<RestaurantSummary[]> {
+// Gas stations and stores with a food counter are tagged "restaurant" too.
+const NOT_REALLY_RESTAURANTS = new Set(["gas_station", "convenience_store", "grocery_store", "supermarket"]);
+
+const PRICE_LEVEL_NAMES: Record<PriceLevel, string> = {
+  1: "PRICE_LEVEL_INEXPENSIVE",
+  2: "PRICE_LEVEL_MODERATE",
+  3: "PRICE_LEVEL_EXPENSIVE",
+  4: "PRICE_LEVEL_VERY_EXPENSIVE",
+};
+
+// Picking more cuisines than this runs one broad search instead of one per cuisine.
+const MAX_SEPARATE_CUISINE_SEARCHES = 5;
+
+// One Google "Text Search": up to 20 places of `type` inside a box around the
+// radius. Unlike nearby search, Google applies price / rating / open-now itself,
+// so e.g. "$$$$ only" returns $$$$ places rather than filtering down the 20 most popular.
+async function textSearch(f: SearchFilters, type: string, query: string): Promise<GooglePlace[]> {
+  // Google only accepts a rectangle here; we trim to the true circle afterwards.
+  const dLat = f.radiusMiles / 69;
+  const dLng = f.radiusMiles / (69 * Math.cos((f.location.lat * Math.PI) / 180));
   const data = await googleFetch<{ places?: GooglePlace[] }>(
-    `${PLACES_URL}/places:searchNearby`,
+    `${PLACES_URL}/places:searchText`,
     {
       method: "POST",
-      fields: SUMMARY_FIELDS.map((field) => `places.${field}`),
+      fields: [...SUMMARY_FIELDS, "types"].map((field) => `places.${field}`),
       body: JSON.stringify({
-        includedTypes: f.cuisines.length > 0 ? f.cuisines : ["restaurant"],
-        maxResultCount: 20,
-        rankPreference: "POPULARITY",
+        textQuery: query,
+        includedType: type,
+        strictTypeFiltering: true,
+        pageSize: 20,
         locationRestriction: {
-          circle: {
-            center: { latitude: f.location.lat, longitude: f.location.lng },
-            radius: Math.min(f.radiusMiles * METERS_PER_MILE, 50000),
+          rectangle: {
+            low: { latitude: f.location.lat - dLat, longitude: f.location.lng - dLng },
+            high: { latitude: f.location.lat + dLat, longitude: f.location.lng + dLng },
           },
         },
+        ...(f.prices.length > 0 && { priceLevels: f.prices.map((p) => PRICE_LEVEL_NAMES[p]) }),
+        ...(f.minRating > 0 && { minRating: f.minRating }),
+        ...(f.openNow && { openNow: true }),
       }),
     },
   );
-  return (data.places ?? []).map((p) => toSummary(p, f.location));
+  return (data.places ?? []).filter((p) => !p.types?.some((t) => NOT_REALLY_RESTAURANTS.has(t)));
+}
+
+// Restaurants matching the filters. With a few cuisines picked, each gets its
+// own search (run at the same time) so every cuisine gets a fair share.
+export async function searchRestaurants(f: SearchFilters): Promise<RestaurantSummary[]> {
+  let places: GooglePlace[];
+  // "places to eat" works better than "restaurant", which Google matches against
+  // names and so favors places literally called "... Restaurant".
+  if (f.cuisines.length === 0) {
+    places = await textSearch(f, "restaurant", "places to eat");
+  } else if (f.cuisines.length <= MAX_SEPARATE_CUISINE_SEARCHES) {
+    const lists = await Promise.all(
+      f.cuisines.map((c) => textSearch(f, c, `${cuisineLabel(c)} places to eat`)),
+    );
+    const byId = new Map(lists.flat().map((p) => [p.id, p]));
+    places = [...byId.values()];
+  } else {
+    const wanted = new Set(f.cuisines);
+    places = (await textSearch(f, "restaurant", "places to eat")).filter((p) =>
+      p.types?.some((t) => wanted.has(t)),
+    );
+  }
+  return places.map((p) => toSummary(p, f.location));
 }
 
 // Full details (photo, reviews, website...) for one restaurant.
@@ -193,6 +241,7 @@ export async function autocomplete(
   input: string,
   sessionToken: string,
   near?: LatLng,
+  onlyTypes?: string[], // e.g. restaurant types; max 5
 ): Promise<Suggestion[]> {
   type Prediction = {
     placeId: string;
@@ -206,6 +255,7 @@ export async function autocomplete(
       body: JSON.stringify({
         input,
         sessionToken,
+        ...(onlyTypes && { includedPrimaryTypes: onlyTypes }),
         // Prefer results near the user rather than anywhere in the world.
         ...(near && {
           locationBias: {
@@ -228,19 +278,32 @@ export async function autocomplete(
   );
 }
 
-// Coordinates of a place chosen from the suggestions. Ends the autocomplete session.
+// A place chosen from the suggestions. Ends the autocomplete session.
 export async function placeLocation(
   id: string,
   sessionToken: string,
-): Promise<{ location: LatLng; label: string }> {
+  withRestaurantInfo = false,
+): Promise<ChosenPlace> {
+  const fields = ["id", "location", "displayName", "formattedAddress"];
+  if (withRestaurantInfo) fields.push("priceLevel", "primaryTypeDisplayName", "googleMapsUri");
   const p = await googleFetch<GooglePlace>(
     `${PLACES_URL}/places/${encodeURIComponent(id)}?sessionToken=${encodeURIComponent(sessionToken)}`,
-    { fields: ["location", "displayName", "formattedAddress"] },
+    { fields },
   );
   if (!p.location) throw new Error("Place has no location");
   return {
     location: { lat: p.location.latitude, lng: p.location.longitude },
     label: p.displayName?.text ?? p.formattedAddress ?? "",
+    ...(withRestaurantInfo && {
+      restaurant: {
+        id: p.id,
+        name: p.displayName?.text ?? "Unnamed restaurant",
+        address: p.formattedAddress ?? "",
+        cuisineLabel: p.primaryTypeDisplayName?.text,
+        price: p.priceLevel ? PRICE_LEVELS[p.priceLevel] : undefined,
+        googleMapsUrl: p.googleMapsUri,
+      },
+    }),
   };
 }
 

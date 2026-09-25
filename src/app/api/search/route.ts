@@ -1,7 +1,7 @@
 import { CUISINES } from "@/lib/cuisines";
-import { applyFilters } from "@/lib/filters";
+import { applyFilters, oneLocationPerName } from "@/lib/filters";
 import { MAX_RADIUS_MILES } from "@/lib/geo";
-import { hasGoogleKey, searchNearby } from "@/lib/google";
+import { hasGoogleKey, searchRestaurants } from "@/lib/google";
 import { mockSearch } from "@/lib/mock";
 import type { PriceLevel, SearchFilters } from "@/lib/types";
 
@@ -16,8 +16,8 @@ export async function POST(request: Request) {
     const sample = !hasGoogleKey();
     const places = sample
       ? mockSearch(filters.location, filters.cuisines)
-      : await searchNearby(filters);
-    return Response.json({ results: applyFilters(places, filters), sample });
+      : await searchRestaurants(filters);
+    return Response.json({ results: oneLocationPerName(applyFilters(places, filters)), sample });
   } catch {
     return Response.json({ error: "Restaurant search failed. Try again." }, { status: 502 });
   }
@@ -45,7 +45,8 @@ function parseFilters(body: unknown): SearchFilters | null {
     radiusMiles: Math.min(Math.max(radius, 0.5), MAX_RADIUS_MILES),
     cuisines: [...new Set(cuisines)],
     prices,
-    includeUnknownPrice: b.includeUnknownPrice !== false,
+    // If you pick a price, places with no price listed on Google are left out.
+    includeUnknownPrice: b.includeUnknownPrice === true,
     minRating: Math.min(Math.max(Number(b.minRating) || 0, 0), 5),
     openNow: b.openNow === true,
   };
