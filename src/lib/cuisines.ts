@@ -1,8 +1,8 @@
 // Cuisine options shown in the dropdown. `type` is Google's place type name
 // (see "Table A" in the Places API docs).
 
+// Selecting none means "any restaurant". The first few are shown before "More".
 export const CUISINES = [
-  { type: "restaurant", label: "Any cuisine" },
   { type: "american_restaurant", label: "American" },
   { type: "barbecue_restaurant", label: "BBQ" },
   { type: "breakfast_restaurant", label: "Breakfast" },
@@ -28,6 +28,20 @@ export const CUISINES = [
   { type: "vegetarian_restaurant", label: "Vegetarian" },
   { type: "vietnamese_restaurant", label: "Vietnamese" },
 ] as const;
+
+// Shown first in the picker; the rest are behind a "More" button.
+export const POPULAR_CUISINES = [
+  "italian_restaurant",
+  "mexican_restaurant",
+  "japanese_restaurant",
+  "sushi_restaurant",
+  "thai_restaurant",
+  "chinese_restaurant",
+  "indian_restaurant",
+  "american_restaurant",
+  "pizza_restaurant",
+  "mediterranean_restaurant",
+];
 
 export function cuisineLabel(type: string): string {
   return CUISINES.find((c) => c.type === type)?.label ?? "Restaurant";

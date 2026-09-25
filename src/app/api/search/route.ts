@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   try {
     const sample = !hasGoogleKey();
     const places = sample
-      ? mockSearch(filters.location, filters.cuisine)
+      ? mockSearch(filters.location, filters.cuisines)
       : await searchNearby(filters);
     return Response.json({ results: applyFilters(places, filters), sample });
   } catch {
@@ -33,8 +33,8 @@ function parseFilters(body: unknown): SearchFilters | null {
   const radius = Number(b.radiusMiles);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(radius)) return null;
 
-  const cuisine = String(b.cuisine);
-  if (!CUISINES.some((c) => c.type === cuisine)) return null;
+  const cuisines = Array.isArray(b.cuisines) ? b.cuisines.map(String) : [];
+  if (!cuisines.every((type) => CUISINES.some((c) => c.type === type))) return null;
 
   const prices = (Array.isArray(b.prices) ? b.prices : []).filter(
     (p): p is PriceLevel => [1, 2, 3, 4].includes(p),
@@ -43,7 +43,7 @@ function parseFilters(body: unknown): SearchFilters | null {
   return {
     location: { lat, lng },
     radiusMiles: Math.min(Math.max(radius, 0.5), MAX_RADIUS_MILES),
-    cuisine,
+    cuisines: [...new Set(cuisines)],
     prices,
     includeUnknownPrice: b.includeUnknownPrice !== false,
     minRating: Math.min(Math.max(Number(b.minRating) || 0, 0), 5),

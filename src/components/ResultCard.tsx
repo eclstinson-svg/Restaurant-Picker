@@ -1,15 +1,17 @@
 import type { RestaurantDetails } from "@/lib/types";
+import { GlobeIcon, MapPinIcon, ShuffleIcon, UtensilsIcon } from "./icons";
+import { primaryButton, secondaryButton } from "./ui";
 
 export function priceText(price?: number) {
   return price ? "$".repeat(price) : "";
 }
 
-function Stars({ rating }: { rating: number }) {
+export function Stars({ rating }: { rating: number }) {
   const full = Math.round(rating);
   return (
-    <span className="text-amber-500" aria-label={`${rating} out of 5 stars`}>
-      {"★".repeat(full)}
-      <span className="text-stone-300 dark:text-stone-600">{"★".repeat(5 - full)}</span>
+    <span className="tracking-tight" aria-label={`${rating} out of 5 stars`}>
+      <span className="text-star">{"★".repeat(full)}</span>
+      <span className="text-border">{"★".repeat(5 - full)}</span>
     </span>
   );
 }
@@ -23,23 +25,23 @@ type Props = {
 };
 
 export function ResultCard({ place, sample, onReroll, remaining, children }: Props) {
-  const meta = [
-    place.cuisineLabel,
-    priceText(place.price),
-    `${place.distanceMiles.toFixed(1)} mi away`,
-  ].filter(Boolean);
+  const meta = [place.cuisineLabel, priceText(place.price), `${place.distanceMiles.toFixed(1)} mi`].filter(
+    Boolean,
+  );
 
   return (
-    <article className="overflow-hidden rounded-3xl bg-card shadow-xl ring-1 ring-black/5 animate-[pop_300ms_ease-out]">
-      <div className="relative h-52 bg-gradient-to-br from-accent to-amber-500">
+    <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm animate-[pop_250ms_ease-out]">
+      <div className="relative aspect-[16/9] bg-subtle">
         {place.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- photo comes via our own redirecting API route
           <img src={place.photoUrl} alt={place.name} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center text-7xl">🍽️</div>
+          <div className="flex h-full items-center justify-center text-muted/60">
+            <UtensilsIcon className="h-14 w-14" />
+          </div>
         )}
         {place.photoCredit && (
-          <span className="absolute bottom-2 right-3 rounded bg-black/50 px-1.5 text-[10px] text-white">
+          <span className="absolute bottom-2 right-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white">
             Photo: {place.photoCredit}
           </span>
         )}
@@ -47,10 +49,8 @@ export function ResultCard({ place, sample, onReroll, remaining, children }: Pro
 
       <div className="space-y-4 p-5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-accent">
-            Tonight you&rsquo;re going to…
-          </p>
-          <h2 className="mt-1 text-2xl font-bold leading-tight">{place.name}</h2>
+          <p className="text-xs font-medium uppercase tracking-wider text-accent">Your pick</p>
+          <h2 className="mt-1 text-2xl font-semibold leading-tight tracking-tight">{place.name}</h2>
           <p className="mt-1 text-sm text-muted">{meta.join(" · ")}</p>
         </div>
 
@@ -58,68 +58,64 @@ export function ResultCard({ place, sample, onReroll, remaining, children }: Pro
           {place.rating !== undefined && (
             <span className="flex items-center gap-1.5">
               <Stars rating={place.rating} />
-              <strong>{place.rating.toFixed(1)}</strong>
-              <span className="text-muted">({place.ratingCount?.toLocaleString()} reviews)</span>
+              <span className="font-medium">{place.rating.toFixed(1)}</span>
+              <span className="text-muted">({place.ratingCount?.toLocaleString()})</span>
             </span>
           )}
           {place.openNow !== undefined && (
             <span
-              className={
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 place.openNow
-                  ? "font-medium text-emerald-600 dark:text-emerald-400"
-                  : "font-medium text-rose-600 dark:text-rose-400"
-              }
+                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                  : "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+              }`}
             >
               {place.openNow ? "Open now" : "Closed now"}
             </span>
           )}
         </div>
 
-        {place.summary && <p className="text-[15px] leading-relaxed">{place.summary}</p>}
+        {place.summary && <p className="leading-relaxed">{place.summary}</p>}
 
-        <p className="text-sm text-muted">
-          {place.address}
-          {place.phone && <> · {place.phone}</>}
+        <p className="flex items-start gap-1.5 text-sm text-muted">
+          <MapPinIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            {place.address}
+            {place.phone && <> · {place.phone}</>}
+          </span>
         </p>
 
         {place.reviews.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold">What people say</h3>
+          <div className="space-y-2.5 border-t border-border pt-4">
+            <h3 className="text-sm font-medium">Recent reviews</h3>
             {place.reviews.map((r, i) => (
-              <blockquote key={i} className="rounded-xl bg-subtle p-3 text-sm">
-                <p className="line-clamp-4 leading-relaxed">&ldquo;{r.text}&rdquo;</p>
-                <footer className="mt-1.5 text-xs text-muted">
-                  {"★".repeat(Math.round(r.rating))} · {r.author} · {r.when}
+              <blockquote key={i} className="rounded-lg bg-subtle p-3 text-sm">
+                <p className="line-clamp-4 leading-relaxed">{r.text}</p>
+                <footer className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
+                  <span className="text-star">{"★".repeat(Math.round(r.rating))}</span>
+                  <span>
+                    {r.author} · {r.when}
+                  </span>
                 </footer>
               </blockquote>
             ))}
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2 pt-1">
-          <a
-            href={place.googleMapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 rounded-full bg-accent px-4 py-3 text-center font-semibold text-white hover:opacity-90"
-          >
-            Open in Google Maps
+        <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+          <a href={place.googleMapsUrl} target="_blank" rel="noopener noreferrer" className={`${primaryButton} flex-1`}>
+            <MapPinIcon />
+            Directions
           </a>
           {place.website && (
-            <a
-              href={place.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full px-4 py-3 font-semibold ring-1 ring-current/20 hover:bg-subtle"
-            >
+            <a href={place.website} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
+              <GlobeIcon />
               Website
             </a>
           )}
-          <button
-            onClick={onReroll}
-            className="rounded-full px-4 py-3 font-semibold ring-1 ring-current/20 hover:bg-subtle"
-          >
-            🎲 Re-roll
+          <button onClick={onReroll} className={secondaryButton}>
+            <ShuffleIcon />
+            Re-roll
           </button>
         </div>
 
@@ -127,10 +123,10 @@ export function ResultCard({ place, sample, onReroll, remaining, children }: Pro
 
         <p className="text-center text-xs text-muted">
           {remaining > 0
-            ? `${remaining} more match${remaining === 1 ? "" : "es"} in the hat`
-            : "That was the last match. Re-roll reshuffles them."}
+            ? `${remaining} more match${remaining === 1 ? "" : "es"} left`
+            : "That was the last match. Re-roll to reshuffle."}
           {" · "}
-          {sample ? "Sample data (no Google key yet)" : "Info & reviews from Google Maps"}
+          {sample ? "Sample data" : "Data from Google Maps"}
         </p>
       </div>
     </article>

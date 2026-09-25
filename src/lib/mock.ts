@@ -64,8 +64,8 @@ function place(m: MockPlace, origin: LatLng): RestaurantSummary {
   };
 }
 
-export function mockSearch(origin: LatLng, cuisine: string): RestaurantSummary[] {
-  return MOCK_PLACES.filter((m) => cuisine === "restaurant" || m.cuisine === cuisine).map(
+export function mockSearch(origin: LatLng, cuisines: string[]): RestaurantSummary[] {
+  return MOCK_PLACES.filter((m) => cuisines.length === 0 || cuisines.includes(m.cuisine)).map(
     (m) => place(m, origin),
   );
 }

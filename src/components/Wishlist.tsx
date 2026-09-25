@@ -4,6 +4,7 @@ import { useState } from "react";
 import { setFlags, type SavedPlace } from "@/lib/db";
 import { useAccount } from "./AccountProvider";
 import { priceText } from "./ResultCard";
+import { BookmarkIcon } from "./icons";
 import { cardClass, ErrorText, errorMessage } from "./ui";
 import { VisitForm } from "./VisitForm";
 
@@ -31,17 +32,17 @@ export function Wishlist() {
 
       {wishlist.length === 0 ? (
         <div className={`${cardClass} text-center`}>
-          <p className="text-4xl">☆</p>
-          <p className="mt-2 font-semibold">Nothing on the list yet</p>
-          <p className="text-sm text-muted">
-            When a pick looks good but not tonight, tap &ldquo;Want to try&rdquo; to save it here.
+          <BookmarkIcon className="mx-auto h-8 w-8 text-muted/60" />
+          <p className="mt-3 font-medium">Nothing saved yet</p>
+          <p className="mt-1 text-sm text-muted">
+            When a pick looks good but not tonight, tap &ldquo;Save&rdquo; to keep it here.
           </p>
         </div>
       ) : (
         <ul className="space-y-3">
           {wishlist.map((s) => (
             <li key={s.id} className={cardClass}>
-              <h3 className="text-lg font-bold">{s.name}</h3>
+              <h3 className="text-lg font-semibold">{s.name}</h3>
               <p className="text-sm text-muted">
                 {[s.cuisine_label, priceText(s.price ?? undefined), s.address].filter(Boolean).join(" · ")}
               </p>
@@ -51,8 +52,8 @@ export function Wishlist() {
                 </div>
               ) : (
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                  <button className="font-semibold text-accent" onClick={() => setLogging(s.id)}>
-                    ✓ We went!
+                  <button className="font-medium text-accent" onClick={() => setLogging(s.id)}>
+                    We went
                   </button>
                   {s.maps_url && (
                     <a href={s.maps_url} target="_blank" rel="noopener noreferrer" className="text-muted underline">
@@ -76,7 +77,7 @@ export function Wishlist() {
           </summary>
           <ul className="mt-2 space-y-1">
             {hidden.map((s) => (
-              <li key={s.id} className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2">
+              <li key={s.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
                 <span className="truncate">{s.name}</span>
                 <button className="shrink-0 text-accent" onClick={() => update(s, { blocked: false })}>
                   Unhide

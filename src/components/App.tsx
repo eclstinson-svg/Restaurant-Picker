@@ -8,9 +8,9 @@ import { Picker } from "./Picker";
 import { Wishlist } from "./Wishlist";
 
 const TABS = [
-  { id: "pick", label: "🎲 Pick" },
-  { id: "history", label: "✓ Been there" },
-  { id: "wishlist", label: "☆ Want to try" },
+  { id: "pick", label: "Pick" },
+  { id: "history", label: "Been there" },
+  { id: "wishlist", label: "Saved" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
@@ -33,13 +33,13 @@ function Screens() {
       <AccountBar />
 
       {couple && (
-        <nav className="grid grid-cols-3 gap-1 rounded-full bg-subtle p-1 text-sm font-semibold">
+        <nav className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-subtle p-1 text-sm font-medium">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               aria-current={current === t.id ? "page" : undefined}
-              className="rounded-full py-2 text-muted aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-sm"
+              className="rounded-lg py-2 text-muted transition-colors hover:text-foreground aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-sm"
             >
               {t.label}
             </button>

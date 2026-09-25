@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { deleteVisit, listVisits, type Visit } from "@/lib/db";
 import { useAccount } from "./AccountProvider";
 import { priceText } from "./ResultCard";
+import { UtensilsIcon } from "./icons";
 import { cardClass, ErrorText, errorMessage, formatDate } from "./ui";
 import { VisitForm } from "./VisitForm";
 
@@ -45,10 +46,10 @@ export function History() {
   if (visits.length === 0) {
     return (
       <div className={`${cardClass} text-center`}>
-        <p className="text-4xl">🍽️</p>
-        <p className="mt-2 font-semibold">No visits yet</p>
-        <p className="text-sm text-muted">
-          Pick a restaurant, go eat, then tap &ldquo;We went here&rdquo; to log it.
+        <UtensilsIcon className="mx-auto h-8 w-8 text-muted/60" />
+        <p className="mt-3 font-medium">No visits yet</p>
+        <p className="mt-1 text-sm text-muted">
+          Pick a restaurant, go eat, then tap &ldquo;We went&rdquo; to log it.
         </p>
       </div>
     );
@@ -63,7 +64,7 @@ export function History() {
           <li key={v.id} className={cardClass}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="truncate text-lg font-bold">{v.place.name}</h3>
+                <h3 className="truncate text-lg font-semibold">{v.place.name}</h3>
                 <p className="text-sm text-muted">
                   {[formatDate(v.visited_on), v.place.cuisine_label, priceText(v.place.price ?? undefined)]
                     .filter(Boolean)
@@ -71,8 +72,8 @@ export function History() {
                 </p>
               </div>
               {v.ratings.length > 0 && (
-                <span className="shrink-0 rounded-full bg-subtle px-2.5 py-1 text-sm font-bold">
-                  <span className="text-amber-500">★</span> {avg.toFixed(1)}
+                <span className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-sm font-medium">
+                  <span className="text-star">★</span> {avg.toFixed(1)}
                 </span>
               )}
             </div>
@@ -80,8 +81,8 @@ export function History() {
             <ul className="mt-3 space-y-1.5 text-sm">
               {v.ratings.map((r) => (
                 <li key={r.user_id}>
-                  <span className="font-semibold">{nameOf(r.user_id)}:</span>{" "}
-                  <span className="text-amber-500">{"★".repeat(r.stars)}</span>
+                  <span className="font-medium">{nameOf(r.user_id)}:</span>{" "}
+                  <span className="text-star">{"★".repeat(r.stars)}</span>
                   {r.note && <span className="text-muted"> &ldquo;{r.note}&rdquo;</span>}
                 </li>
               ))}
@@ -94,7 +95,7 @@ export function History() {
             ) : (
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 {!iRated && (
-                  <button className="font-semibold text-accent" onClick={() => setRating(v.id)}>
+                  <button className="font-medium text-accent" onClick={() => setRating(v.id)}>
                     + Add your rating
                   </button>
                 )}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { placeInfoFrom, savePlace, setFlags } from "@/lib/db";
 import type { RestaurantDetails } from "@/lib/types";
 import { useAccount } from "./AccountProvider";
+import { BookmarkIcon, CheckIcon, EyeOffIcon } from "./icons";
 import { ErrorText, errorMessage, secondaryButton } from "./ui";
 import { VisitForm } from "./VisitForm";
 
@@ -56,25 +57,32 @@ export function PlaceActions({
   return (
     <div className="space-y-2">
       {(entry?.visitCount ?? 0) > 0 && (
-        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+        <p className="text-sm font-medium text-accent">
           {justLogged ? "Saved! " : ""}You&rsquo;ve been here {entry!.visitCount}{" "}
           {entry!.visitCount === 1 ? "time" : "times"}.
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <button className={secondaryButton} disabled={busy} onClick={() => setLogging(true)}>
-          ✓ We went here
+      <div className="grid grid-cols-3 gap-2 text-sm">
+        <button className={`${secondaryButton} px-2 text-sm`} disabled={busy} onClick={() => setLogging(true)}>
+          <CheckIcon />
+          We went
         </button>
         <button
-          className={secondaryButton}
+          className={`${secondaryButton} px-2 text-sm aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent`}
           disabled={busy}
           aria-pressed={entry?.wishlist ?? false}
           onClick={() => update({ wishlist: !entry?.wishlist })}
         >
-          {entry?.wishlist ? "★ On our list" : "☆ Want to try"}
+          <BookmarkIcon filled={entry?.wishlist} />
+          {entry?.wishlist ? "Saved" : "Save"}
         </button>
-        <button className={secondaryButton} disabled={busy} onClick={() => update({ blocked: true })}>
-          🚫 Not for us
+        <button
+          className={`${secondaryButton} px-2 text-sm text-muted`}
+          disabled={busy}
+          onClick={() => update({ blocked: true })}
+        >
+          <EyeOffIcon />
+          Not for us
         </button>
       </div>
       <ErrorText>{error}</ErrorText>

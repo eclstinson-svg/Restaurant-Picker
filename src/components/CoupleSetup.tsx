@@ -54,7 +54,7 @@ export function CoupleSetup() {
       </button>
 
       <div className="flex items-center gap-3 text-xs text-muted">
-        <span className="h-px flex-1 bg-current/20" /> or join your partner <span className="h-px flex-1 bg-current/20" />
+        <span className="h-px flex-1 bg-border" /> or join your partner <span className="h-px flex-1 bg-border" />
       </div>
 
       <form

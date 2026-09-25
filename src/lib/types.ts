@@ -11,7 +11,7 @@ export type Suggestion = { id: string; main: string; secondary: string };
 export type SearchFilters = {
   location: LatLng;
   radiusMiles: number;
-  cuisine: string; // a Google place type, e.g. "italian_restaurant"
+  cuisines: string[]; // Google place types, e.g. "italian_restaurant"; empty = any
   prices: PriceLevel[]; // empty = any price
   includeUnknownPrice: boolean; // many places have no price listed on Google
   minRating: number; // 0 = any

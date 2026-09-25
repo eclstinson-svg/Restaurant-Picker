@@ -2,14 +2,17 @@
 
 // Small shared pieces of UI and styling used across screens.
 
-export const labelClass = "block text-sm font-semibold mb-1.5";
+export const labelClass = "block text-sm font-medium mb-1.5";
 export const fieldClass =
-  "w-full rounded-xl bg-card px-3.5 py-3 ring-1 ring-black/10 dark:ring-white/15 focus:outline-none focus:ring-2 focus:ring-accent";
+  "w-full rounded-lg border border-border bg-card px-3 py-2.5 outline-none transition-colors placeholder:text-muted/70 focus:border-accent focus:ring-3 focus:ring-accent/15";
 export const primaryButton =
-  "rounded-full bg-accent px-5 py-3 font-semibold text-white hover:opacity-90 disabled:opacity-60";
+  "inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 font-medium text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-60";
 export const secondaryButton =
-  "rounded-full px-4 py-2.5 font-semibold ring-1 ring-current/20 hover:bg-subtle disabled:opacity-60";
-export const cardClass = "rounded-3xl bg-card p-5 shadow-sm ring-1 ring-black/5";
+  "inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5 font-medium transition-colors hover:bg-subtle disabled:opacity-60";
+export const cardClass = "rounded-2xl border border-border bg-card p-5 shadow-sm shadow-slate-900/[0.03]";
+// Toggle chip (use with aria-pressed): outlined when off, soft teal when on.
+export const chipClass =
+  "rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium transition-colors hover:bg-subtle aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent";
 
 export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong.";
@@ -36,7 +39,7 @@ export function StarInput({ value, onChange }: { value: number; onChange: (v: nu
           aria-label={`${n} star${n > 1 ? "s" : ""}`}
           onClick={() => onChange(n)}
           className={`text-3xl leading-none transition-transform active:scale-90 ${
-            n <= value ? "text-amber-500" : "text-stone-300 dark:text-stone-600"
+            n <= value ? "text-star" : "text-border"
           }`}
         >
           ★

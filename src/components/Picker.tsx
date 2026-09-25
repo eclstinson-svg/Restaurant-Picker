@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { CUISINES } from "@/lib/cuisines";
+import { CUISINES, POPULAR_CUISINES } from "@/lib/cuisines";
 import { MAX_RADIUS_MILES } from "@/lib/geo";
 import type {
   LatLng,
@@ -14,7 +14,8 @@ import { useAccount } from "./AccountProvider";
 import { LocationInput } from "./LocationInput";
 import { PlaceActions } from "./PlaceActions";
 import { priceText, ResultCard } from "./ResultCard";
-import { fieldClass as field, labelClass as label } from "./ui";
+import { LocateIcon, ShuffleIcon } from "./icons";
+import { cardClass, chipClass, labelClass as label, primaryButton, secondaryButton } from "./ui";
 
 const SHUFFLE_MS = 1200; // how long the name-shuffle animation runs
 
@@ -46,7 +47,8 @@ export function Picker() {
   const [pickedOrigin, setPickedOrigin] = useState<LatLng | null>(null);
   const [lastOrigin, setLastOrigin] = useState<LatLng | null>(null); // biases suggestions
   const [radius, setRadius] = useState(10);
-  const [cuisine, setCuisine] = useState("restaurant");
+  const [cuisines, setCuisines] = useState<string[]>([]); // none = any
+  const [showAllCuisines, setShowAllCuisines] = useState(false);
   const [prices, setPrices] = useState<PriceLevel[]>([]);
   const [minRating, setMinRating] = useState(0);
   const [openNow, setOpenNow] = useState(false);
@@ -65,6 +67,10 @@ export function Picker() {
   const origin = useRef<LatLng | null>(null);
   const [remaining, setRemaining] = useState(0);
 
+  function toggleCuisine(type: string) {
+    setCuisines((prev) => (prev.includes(type) ? prev.filter((c) => c !== type) : [...prev, type]));
+  }
+
   function togglePrice(p: PriceLevel) {
     setPrices((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p].sort()));
   }
@@ -78,7 +84,7 @@ export function Picker() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setPickedOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocationText("📍 My current location");
+        setLocationText("Current location");
         setError(null);
         setLocating(false);
       },
@@ -142,7 +148,7 @@ export function Picker() {
       const filters: SearchFilters = {
         location: from,
         radiusMiles: radius,
-        cuisine,
+        cuisines,
         prices,
         includeUnknownPrice: true,
         minRating,
@@ -222,10 +228,14 @@ export function Picker() {
     }
   }
 
+  const visibleCuisines = showAllCuisines
+    ? CUISINES
+    : CUISINES.filter((c) => POPULAR_CUISINES.includes(c.type) || cuisines.includes(c.type));
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <form
-        className="space-y-5 rounded-3xl bg-card p-5 shadow-sm ring-1 ring-black/5"
+        className={`${cardClass} space-y-6`}
         onSubmit={(e) => {
           e.preventDefault();
           spin();
@@ -254,17 +264,21 @@ export function Picker() {
               onClick={useMyLocation}
               disabled={locating}
               title="Use my current location"
-              className="shrink-0 rounded-xl px-3.5 ring-1 ring-black/10 hover:bg-subtle disabled:opacity-50 dark:ring-white/15"
+              aria-label="Use my current location"
+              className={`${secondaryButton} shrink-0 px-3 text-muted hover:text-accent`}
             >
-              {locating ? "…" : "📍"}
+              <LocateIcon className={`h-5 w-5 ${locating ? "animate-pulse" : ""}`} />
             </button>
           </div>
         </div>
 
         <div>
-          <label htmlFor="radius" className={label}>
-            Within <span className="text-accent">{radius} miles</span>
-          </label>
+          <div className="mb-2 flex items-baseline justify-between">
+            <label htmlFor="radius" className="text-sm font-medium">
+              Distance
+            </label>
+            <span className="text-sm font-medium tabular-nums text-accent">Within {radius} mi</span>
+          </div>
           <input
             id="radius"
             type="range"
@@ -276,100 +290,121 @@ export function Picker() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="cuisine" className={label}>
-              Cuisine
-            </label>
-            <select
-              id="cuisine"
-              className={field}
-              value={cuisine}
-              onChange={(e) => setCuisine(e.target.value)}
-            >
-              {CUISINES.map((c) => (
-                <option key={c.type} value={c.type}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="rating" className={label}>
-              Min rating
-            </label>
-            <select
-              id="rating"
-              className={field}
-              value={minRating}
-              onChange={(e) => setMinRating(Number(e.target.value))}
-            >
-              <option value={0}>Any</option>
-              <option value={3.5}>3.5+ ★</option>
-              <option value={4}>4.0+ ★</option>
-              <option value={4.5}>4.5+ ★</option>
-            </select>
-          </div>
-        </div>
-
         <fieldset>
-          <legend className={label}>Price {prices.length === 0 && <span className="font-normal text-muted">(any)</span>}</legend>
-          <div className="grid grid-cols-4 gap-2">
-            {([1, 2, 3, 4] as PriceLevel[]).map((p) => (
+          <div className="mb-2 flex items-baseline justify-between">
+            <legend className="text-sm font-medium">Cuisine</legend>
+            {cuisines.length > 0 ? (
+              <button type="button" className="text-xs font-medium text-muted hover:text-accent" onClick={() => setCuisines([])}>
+                Clear ({cuisines.length})
+              </button>
+            ) : (
+              <span className="text-xs text-muted">Any — tap to narrow down</span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {visibleCuisines.map((c) => (
               <button
-                key={p}
+                key={c.type}
                 type="button"
-                aria-pressed={prices.includes(p)}
-                onClick={() => togglePrice(p)}
-                className="rounded-xl py-2.5 font-semibold ring-1 ring-black/10 transition-colors aria-pressed:bg-accent aria-pressed:text-white aria-pressed:ring-accent dark:ring-white/15"
+                aria-pressed={cuisines.includes(c.type)}
+                onClick={() => toggleCuisine(c.type)}
+                className={chipClass}
               >
-                {priceText(p)}
+                {c.label}
               </button>
             ))}
+            {(showAllCuisines || visibleCuisines.length < CUISINES.length) && (
+              <button
+                type="button"
+                onClick={() => setShowAllCuisines(!showAllCuisines)}
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-soft"
+              >
+                {showAllCuisines ? "Fewer" : `+${CUISINES.length - visibleCuisines.length} more`}
+              </button>
+            )}
           </div>
         </fieldset>
 
-        <label className="flex items-center gap-2.5 text-sm font-medium">
-          <input
-            type="checkbox"
-            checked={openNow}
-            onChange={(e) => setOpenNow(e.target.checked)}
-            className="h-4 w-4 accent-accent"
-          />
-          Only places open right now
-        </label>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <fieldset>
+            <legend className={label}>
+              Price {prices.length === 0 && <span className="font-normal text-muted">· any</span>}
+            </legend>
+            <div className="flex gap-2">
+              {([1, 2, 3, 4] as PriceLevel[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  aria-pressed={prices.includes(p)}
+                  onClick={() => togglePrice(p)}
+                  className={`${chipClass} flex-1`}
+                >
+                  {priceText(p)}
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
-        {couple && (
-          <label className="-mt-2 flex items-center gap-2.5 text-sm font-medium">
+          <fieldset>
+            <legend className={label}>Rating</legend>
+            <div className="flex gap-2">
+              {[0, 3.5, 4, 4.5].map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  aria-pressed={minRating === r}
+                  onClick={() => setMinRating(r)}
+                  className={`${chipClass} flex-1 whitespace-nowrap px-2`}
+                >
+                  {r === 0 ? "Any" : `${r.toFixed(1)}+`}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+
+        <div className="space-y-2.5">
+          <label className="flex items-center gap-2.5 text-sm">
             <input
               type="checkbox"
-              checked={includeVisited}
-              onChange={(e) => setIncludeVisited(e.target.checked)}
+              checked={openNow}
+              onChange={(e) => setOpenNow(e.target.checked)}
               className="h-4 w-4 accent-accent"
             />
-            Include places we&rsquo;ve been
+            Only places open right now
           </label>
-        )}
+          {couple && (
+            <label className="flex items-center gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={includeVisited}
+                onChange={(e) => setIncludeVisited(e.target.checked)}
+                className="h-4 w-4 accent-accent"
+              />
+              Include places we&rsquo;ve been
+            </label>
+          )}
+        </div>
 
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded-full bg-accent py-4 text-lg font-bold text-white shadow-lg shadow-accent/30 transition active:scale-[0.98] disabled:opacity-60"
-        >
-          {busy ? "Picking…" : "🎲 Pick for us!"}
+        <button type="submit" disabled={busy} className={`${primaryButton} w-full py-3 text-base`}>
+          <ShuffleIcon className="h-5 w-5" />
+          {busy ? "Picking…" : "Pick a restaurant"}
         </button>
       </form>
 
       {error && (
-        <p role="alert" className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+        <p
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300"
+        >
           {error}
         </p>
       )}
 
       {shufflingName && (
-        <div className="rounded-3xl bg-card p-10 text-center shadow-sm ring-1 ring-black/5">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">Shuffling…</p>
-          <p className="mt-2 truncate text-2xl font-bold text-accent">{shufflingName}</p>
+        <div className={`${cardClass} py-10 text-center`}>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted">Shuffling</p>
+          <p className="mt-2 truncate text-2xl font-semibold text-accent">{shufflingName}</p>
         </div>
       )}
 

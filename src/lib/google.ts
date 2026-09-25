@@ -1,5 +1,4 @@
 import "server-only";
-import { cuisineLabel } from "./cuisines";
 import { distanceMiles, METERS_PER_MILE } from "./geo";
 import type {
   LatLng,
@@ -83,7 +82,7 @@ const DETAIL_FIELDS = [
   "reviews",
 ];
 
-function toSummary(p: GooglePlace, origin: LatLng, cuisine?: string): RestaurantSummary {
+function toSummary(p: GooglePlace, origin: LatLng): RestaurantSummary {
   const location = {
     lat: p.location?.latitude ?? 0,
     lng: p.location?.longitude ?? 0,
@@ -97,8 +96,7 @@ function toSummary(p: GooglePlace, origin: LatLng, cuisine?: string): Restaurant
     rating: p.rating,
     ratingCount: p.userRatingCount,
     price: p.priceLevel ? PRICE_LEVELS[p.priceLevel] : undefined,
-    cuisineLabel:
-      p.primaryTypeDisplayName?.text ?? (cuisine ? cuisineLabel(cuisine) : undefined),
+    cuisineLabel: p.primaryTypeDisplayName?.text,
     openNow: p.currentOpeningHours?.openNow,
   };
 }
@@ -139,7 +137,7 @@ export async function geocode(address: string): Promise<{ location: LatLng; labe
   return { location: top.geometry.location, label: top.formatted_address };
 }
 
-// Up to 20 restaurants of the chosen cuisine inside the radius.
+// Up to 20 restaurants of any of the chosen cuisines inside the radius.
 export async function searchNearby(f: SearchFilters): Promise<RestaurantSummary[]> {
   const data = await googleFetch<{ places?: GooglePlace[] }>(
     `${PLACES_URL}/places:searchNearby`,
@@ -147,7 +145,7 @@ export async function searchNearby(f: SearchFilters): Promise<RestaurantSummary[
       method: "POST",
       fields: SUMMARY_FIELDS.map((field) => `places.${field}`),
       body: JSON.stringify({
-        includedTypes: [f.cuisine],
+        includedTypes: f.cuisines.length > 0 ? f.cuisines : ["restaurant"],
         maxResultCount: 20,
         rankPreference: "POPULARITY",
         locationRestriction: {
@@ -159,7 +157,7 @@ export async function searchNearby(f: SearchFilters): Promise<RestaurantSummary[
       }),
     },
   );
-  return (data.places ?? []).map((p) => toSummary(p, f.location, f.cuisine));
+  return (data.places ?? []).map((p) => toSummary(p, f.location));
 }
 
 // Full details (photo, reviews, website...) for one restaurant.

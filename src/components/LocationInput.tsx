@@ -22,9 +22,12 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const latestRequest = useRef(0);
   const session = useRef<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dismissed = useRef(false); // Esc pressed since the last keystroke
 
   function handleChange(text: string) {
     onChange(text);
+    dismissed.current = false;
     clearTimeout(timer.current);
     if (text.trim().length < 3) {
       setSuggestions([]);
@@ -46,7 +49,9 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
         if (requestId !== latestRequest.current) return; // a newer request is on its way
         setSuggestions(data.suggestions ?? []);
         setActive(-1);
-        setOpen((data.suggestions ?? []).length > 0);
+        // Only pop open if they're still in the box (not if they've pressed Esc or moved on).
+        const stillTyping = document.activeElement === inputRef.current && !dismissed.current;
+        setOpen(stillTyping && (data.suggestions ?? []).length > 0);
       } catch {
         // Suggestions are a nice-to-have; typing + searching still works.
       }
@@ -73,6 +78,7 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") dismissed.current = true;
     if (!open || suggestions.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -92,6 +98,7 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
     <div className="relative flex-1">
       <input
         id="location"
+        ref={inputRef}
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
@@ -104,14 +111,14 @@ export function LocationInput({ value, onChange, onSelect, onError, near }: Prop
         aria-busy={resolving}
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        onFocus={() => suggestions.length > 0 && setOpen(true)}
+        onFocus={() => suggestions.length > 0 && !dismissed.current && setOpen(true)}
         onBlur={() => setOpen(false)}
       />
       {open && (
         <ul
           id={listId}
           role="listbox"
-          className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-xl bg-card py-1 shadow-xl ring-1 ring-black/10 dark:ring-white/15"
+          className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-lg border border-border bg-card py-1 shadow-lg shadow-slate-900/10"
         >
           {suggestions.map((s, i) => (
             <li
