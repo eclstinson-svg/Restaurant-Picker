@@ -1,5 +1,5 @@
 import type { RestaurantDetails } from "@/lib/types";
-import { GlobeIcon, MapPinIcon, UtensilsIcon } from "./icons";
+import { CheckIcon, GlobeIcon, MapPinIcon, UtensilsIcon } from "./icons";
 import { primaryButton, secondaryButton } from "./ui";
 
 export function priceText(price?: number) {
@@ -19,18 +19,23 @@ export function Stars({ rating }: { rating: number }) {
 type Props = {
   place: RestaurantDetails;
   sample: boolean;
-  onReroll: () => void;
   remaining: number;
+  onReroll?: () => void; // single mode
+  keep?: { kept: boolean; onToggle: () => void }; // compare mode
   children?: React.ReactNode; // extra actions (e.g. "We went here") when signed in
 };
 
-export function ResultCard({ place, sample, onReroll, remaining, children }: Props) {
+export function ResultCard({ place, sample, onReroll, keep, remaining, children }: Props) {
   const meta = [place.cuisineLabel, priceText(place.price), `${place.distanceMiles.toFixed(1)} mi`].filter(
     Boolean,
   );
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm animate-[pop_250ms_ease-out]">
+    <article
+      className={`overflow-hidden rounded-2xl border bg-card shadow-sm animate-[pop_250ms_ease-out] ${
+        keep?.kept ? "border-accent ring-2 ring-accent/20" : "border-border"
+      }`}
+    >
       <div className="relative aspect-[16/9] bg-subtle">
         {place.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- photo comes via our own redirecting API route
@@ -113,10 +118,22 @@ export function ResultCard({ place, sample, onReroll, remaining, children }: Pro
               Website
             </a>
           )}
-          <button onClick={onReroll} className={secondaryButton}>
-            <span aria-hidden="true">🎲</span>
-            Re-roll
-          </button>
+          {onReroll && (
+            <button onClick={onReroll} className={secondaryButton}>
+              <span aria-hidden="true">🎲</span>
+              Re-roll
+            </button>
+          )}
+          {keep && (
+            <button
+              onClick={keep.onToggle}
+              aria-pressed={keep.kept}
+              className={`${secondaryButton} aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent`}
+            >
+              {keep.kept ? <CheckIcon /> : null}
+              {keep.kept ? "Kept" : "Keep"}
+            </button>
+          )}
         </div>
 
         {children}

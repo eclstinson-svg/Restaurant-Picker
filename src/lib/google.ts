@@ -1,5 +1,5 @@
 import "server-only";
-import { cuisineLabel } from "./cuisines";
+import { CUISINES, cuisineLabel, matchesStyle, STYLES } from "./cuisines";
 import { distanceMiles } from "./geo";
 import type {
   ChosenPlace,
@@ -150,8 +150,8 @@ const PRICE_LEVEL_NAMES: Record<PriceLevel, string> = {
   4: "PRICE_LEVEL_VERY_EXPENSIVE",
 };
 
-// Picking more cuisines than this runs one broad search instead of one per cuisine.
-const MAX_SEPARATE_CUISINE_SEARCHES = 5;
+// Most Google searches we'll run for one roll (they run at the same time).
+const MAX_SEARCHES = 5;
 
 // One Google "Text Search": up to 20 places of `type` inside a box around the
 // radius. Unlike nearby search, Google applies price / rating / open-now itself,
@@ -185,27 +185,60 @@ async function textSearch(f: SearchFilters, type: string, query: string): Promis
   return (data.places ?? []).filter((p) => !p.types?.some((t) => NOT_REALLY_RESTAURANTS.has(t)));
 }
 
-// Restaurants matching the filters. With a few cuisines picked, each gets its
-// own search (run at the same time) so every cuisine gets a fair share.
+// Restaurants matching the filters. Each chosen cuisine (and style) gets its
+// own search, run at the same time, so every choice gets a fair share of results.
+// Note: "places to eat" works better than "restaurant", which Google matches
+// against names and so favors places literally called "... Restaurant".
 export async function searchRestaurants(f: SearchFilters): Promise<RestaurantSummary[]> {
-  let places: GooglePlace[];
-  // "places to eat" works better than "restaurant", which Google matches against
-  // names and so favors places literally called "... Restaurant".
-  if (f.cuisines.length === 0) {
-    places = await textSearch(f, "restaurant", "places to eat");
-  } else if (f.cuisines.length <= MAX_SEPARATE_CUISINE_SEARCHES) {
-    const lists = await Promise.all(
-      f.cuisines.map((c) => textSearch(f, c, `${cuisineLabel(c)} places to eat`)),
-    );
-    const byId = new Map(lists.flat().map((p) => [p.id, p]));
-    places = [...byId.values()];
-  } else {
-    const wanted = new Set(f.cuisines);
-    places = (await textSearch(f, "restaurant", "places to eat")).filter((p) =>
-      p.types?.some((t) => wanted.has(t)),
-    );
+  // "Most but not all" cuisines (e.g. Select all, minus two): search broadly
+  // and drop the ones they unticked, rather than running 20+ searches.
+  const allCuisines = CUISINES.map((c) => c.type as string);
+  const excludeMode = f.cuisines.length > allCuisines.length / 2;
+  const excluded = new Set(excludeMode ? allCuisines.filter((t) => !f.cuisines.includes(t)) : []);
+  const cuisinePlans: (string | null)[] = excludeMode || f.cuisines.length === 0 ? [null] : f.cuisines;
+  const stylePlans = f.styles.length > 0 ? f.styles.map((s) => STYLES.find((x) => x.id === s)!) : [null];
+
+  // One search per cuisine × style.
+  //  checkCuisine: results still need their cuisine checked (broad fallback only)
+  //  styleGuaranteed: searched within that style's own type, so no style check needed
+  type Plan = { type: string; query: string; checkCuisine: boolean; styleGuaranteed: boolean };
+  const byStyle = (style: (typeof STYLES)[number] | null, checkCuisine: boolean): Plan => ({
+    type: style?.searchType ?? "restaurant",
+    query: style?.query ?? "places to eat",
+    checkCuisine,
+    styleGuaranteed: Boolean(style && style.id !== "casual"),
+  });
+  let plans: Plan[] = cuisinePlans.flatMap((cuisine) =>
+    stylePlans.map((style): Plan => {
+      if (!cuisine) return byStyle(style, false);
+      // Cuisine + style (e.g. Mexican + fast food): search within the cuisine and
+      // check the style afterwards. Google handles "Mexican fast food" poorly, but
+      // "Mexican fast food chain" among Mexican places finds Chipotle, Taco Bell, etc.
+      const styleWords = !style || style.id === "casual" ? "places to eat" : style.id === "fast_food" ? "fast food chain" : style.query;
+      return { type: cuisine, query: `${cuisineLabel(cuisine)} ${styleWords}`, checkCuisine: false, styleGuaranteed: false };
+    }),
+  );
+  if (plans.length > MAX_SEARCHES) {
+    // Too many combinations: search by style (or just broadly) and check cuisine below.
+    plans = stylePlans.slice(0, MAX_SEARCHES).map((style) => byStyle(style, true));
   }
-  return places.map((p) => toSummary(p, f.location));
+
+  const lists = await Promise.all(
+    plans.map(async (plan) => (await textSearch(f, plan.type, plan.query)).map((place) => ({ place, plan }))),
+  );
+  const results = [...new Map(lists.flat().map((r) => [r.place.id, r])).values()];
+
+  return results
+    .filter(({ place, plan }) => {
+      const types = place.types ?? [];
+      if (excludeMode && types.some((t) => excluded.has(t))) return false;
+      if (plan.checkCuisine && !excludeMode && f.cuisines.length > 0 && !types.some((t) => f.cuisines.includes(t))) {
+        return false;
+      }
+      const price = place.priceLevel ? PRICE_LEVELS[place.priceLevel] : undefined;
+      return plan.styleGuaranteed || matchesStyle(types, price, f.styles);
+    })
+    .map(({ place }) => toSummary(place, f.location));
 }
 
 // Full details (photo, reviews, website...) for one restaurant.

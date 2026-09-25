@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { STYLES } from "@/lib/cuisines";
 import { MAX_RADIUS_MILES } from "@/lib/geo";
 import type {
   LatLng,
@@ -8,6 +9,7 @@ import type {
   RestaurantDetails,
   RestaurantSummary,
   SearchFilters,
+  Style,
 } from "@/lib/types";
 import { useAccount } from "./AccountProvider";
 import { CuisinePicker } from "./CuisinePicker";
@@ -37,9 +39,25 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// The "slot machine": show random names from the pool for a moment.
+async function shuffleNames(pool: { name: string }[], show: (name: string) => void) {
+  if (pool.length < 2) return;
+  const end = Date.now() + SHUFFLE_MS;
+  while (Date.now() < end) {
+    show(pool[Math.floor(Math.random() * pool.length)].name);
+    await wait(90);
+  }
+}
+
+// What's showing in one result position: a restaurant, or the dice still rolling.
+type Slot = { status: "rolling"; id: string; name: string } | { status: "ready"; id: string; place: RestaurantDetails };
+
+function toggle<T>(list: T[], item: T): T[] {
+  return list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
+}
+
 export function Picker() {
   const { couple, saved } = useAccount();
-  const [includeVisited, setIncludeVisited] = useState(false);
 
   // Filters
   const [locationText, setLocationText] = useState("");
@@ -48,27 +66,34 @@ export function Picker() {
   const [lastOrigin, setLastOrigin] = useState<LatLng | null>(null); // biases suggestions
   const [radius, setRadius] = useState(10);
   const [cuisines, setCuisines] = useState<string[]>([]); // none = any
+  const [styles, setStyles] = useState<Style[]>([]); // none = any
   const [prices, setPrices] = useState<PriceLevel[]>([]);
   const [minRating, setMinRating] = useState(0);
   const [openNow, setOpenNow] = useState(false);
+  const [includeVisited, setIncludeVisited] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [compare, setCompare] = useState(false);
 
   // Results
-  const [busy, setBusy] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [shufflingName, setShufflingName] = useState<string | null>(null);
-  const [current, setCurrent] = useState<RestaurantDetails | null>(null);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [keptId, setKeptId] = useState<string | null>(null);
   const [sample, setSample] = useState(false);
-
-  // Values the re-roll button needs, kept between spins.
-  const queue = useRef<RestaurantSummary[]>([]);
-  const matches = useRef<RestaurantSummary[]>([]);
-  const origin = useRef<LatLng | null>(null);
   const [remaining, setRemaining] = useState(0);
+  const [visibleIndex, setVisibleIndex] = useState(0); // which compare card is on screen
 
-  function togglePrice(p: PriceLevel) {
-    setPrices((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p].sort()));
-  }
+  // Kept between rolls (refs, because several rolls can run at once).
+  const queue = useRef<RestaurantSummary[]>([]); // shuffled, not yet shown
+  const matches = useRef<RestaurantSummary[]>([]); // everything that matched the search
+  const origin = useRef<LatLng | null>(null);
+  const slotIds = useRef<string[]>([]); // ids on screen, updated instantly
+  const carousel = useRef<HTMLDivElement>(null);
+
+  const rolling = slots.some((s) => s.status === "rolling");
+  const busy = searching || rolling;
+  const moreCount = (minRating > 0 ? 1 : 0) + (openNow ? 1 : 0) + (includeVisited ? 1 : 0);
 
   function useMyLocation() {
     if (!navigator.geolocation) {
@@ -98,9 +123,41 @@ export function Picker() {
     );
   }
 
-  // Show a quick "slot machine" of names while the winner's details load.
-  async function reveal(pick: RestaurantSummary, pool: RestaurantSummary[]) {
-    setCurrent(null);
+  // Next restaurant from the shuffled queue that isn't already on screen.
+  // Reshuffles once everything has been shown.
+  function drawNext(exclude: Set<string>): RestaurantSummary | null {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const i = queue.current.findIndex((m) => !exclude.has(m.id));
+      if (i >= 0) return queue.current.splice(i, 1)[0];
+      queue.current = shuffle(matches.current.filter((m) => !exclude.has(m.id)));
+    }
+    return null;
+  }
+
+  function setSlot(index: number, slot: Slot | null) {
+    setSlots((prev) => {
+      const next = [...prev];
+      if (slot) next[index] = slot;
+      else next.splice(index, 1);
+      return next;
+    });
+  }
+
+  // Roll a new restaurant into position `index` (0 or 1), with the name-shuffle animation.
+  async function rollInto(index: number) {
+    const pick = drawNext(new Set(slotIds.current));
+    if (!pick) {
+      setError(
+        matches.current.length <= 1
+          ? "That's the only match. Try a bigger radius or fewer filters."
+          : "No more matches to show. Try a new search.",
+      );
+      return;
+    }
+    slotIds.current[index] = pick.id;
+    setRemaining(queue.current.length);
+    setSlot(index, { status: "rolling", id: pick.id, name: pick.name });
+
     const details = getJson<RestaurantDetails>(
       `/api/place?${new URLSearchParams({
         id: pick.id,
@@ -108,24 +165,40 @@ export function Picker() {
         lng: String(origin.current!.lng),
       })}`,
     );
-    details.catch(() => {}); // errors are handled below; this stops an early "unhandled" warning
-    if (pool.length > 1) {
-      const end = Date.now() + SHUFFLE_MS;
-      while (Date.now() < end) {
-        setShufflingName(pool[Math.floor(Math.random() * pool.length)].name);
-        await wait(90);
-      }
-    }
+    details.catch(() => {}); // handled below; stops an early "unhandled" warning
+
+    await shuffleNames(matches.current, (name) => setSlot(index, { status: "rolling", id: pick.id, name }));
     try {
-      setCurrent(await details);
-    } finally {
-      setShufflingName(null);
+      setSlot(index, { status: "ready", id: pick.id, place: await details });
+    } catch (e) {
+      slotIds.current.splice(index, 1);
+      setSlot(index, null);
+      setError(e instanceof Error ? e.message : "Something went wrong.");
     }
   }
 
-  async function spin() {
+  // Distance between the start of one compare card and the next.
+  function cardStep(el: HTMLElement): number {
+    const [a, b] = el.children as unknown as HTMLElement[];
+    return b ? b.offsetLeft - a.offsetLeft : el.clientWidth;
+  }
+
+  function scrollToCard(index: number, behavior: ScrollBehavior = "smooth") {
+    const el = carousel.current;
+    if (el) el.scrollTo({ left: index * cardStep(el), behavior });
+  }
+
+  // Show a card that just finished rolling. Jumps instantly after the new card
+  // has rendered: a smooth scroll gets undone if the card changes size mid-way
+  // (e.g. its photo loading), because the browser snaps back to the old card.
+  async function revealCard(index: number) {
+    await wait(60);
+    scrollToCard(index, "instant");
+  }
+
+  async function search() {
     setError(null);
-    setBusy(true);
+    setSearching(true);
     try {
       // 1. Work out where we're searching from.
       let from = pickedOrigin;
@@ -144,88 +217,116 @@ export function Picker() {
         location: from,
         radiusMiles: radius,
         cuisines,
+        styles,
         prices,
         includeUnknownPrice: false,
         minRating,
         openNow,
       };
-      const { results, sample } = await getJson<{
-        results: RestaurantSummary[];
-        sample: boolean;
-      }>("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(filters),
-      });
+      const { results, sample } = await getJson<{ results: RestaurantSummary[]; sample: boolean }>(
+        "/api/search",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(filters) },
+      );
       setSample(sample);
       if (results.length === 0) {
-        setCurrent(null);
         throw new Error("No restaurants matched. Try a bigger radius or fewer filters.");
       }
 
       // 3. Leave out places you've hidden, and (unless asked) places you've been.
       const hidden = new Set(saved.filter((s) => s.blocked).map((s) => s.place_id));
       const visited = new Set(saved.filter((s) => s.visitCount > 0).map((s) => s.place_id));
-      const pool = results.filter(
-        (r) => !hidden.has(r.id) && (includeVisited || !visited.has(r.id)),
-      );
+      const pool = results.filter((r) => !hidden.has(r.id) && (includeVisited || !visited.has(r.id)));
       if (pool.length === 0) {
-        setCurrent(null);
         throw new Error(
           `You've already been to (or hidden) all ${results.length} matches! ` +
-            "Tick “Include places we've been”, or widen the search.",
+            "Turn on “Include places we've been” under More filters, or widen the search.",
         );
       }
 
-      // 4. Shuffle them and reveal the first one.
+      // 4. Shuffle and roll (two at once in compare mode).
       matches.current = pool;
       queue.current = shuffle(pool);
-      const pick = queue.current.shift()!;
-      setRemaining(queue.current.length);
-      await reveal(pick, pool);
+      slotIds.current = [];
+      setSlots([]);
+      setKeptId(null);
+      setVisibleIndex(0);
+      carousel.current?.scrollTo({ left: 0 });
+      setSearching(false);
+      await Promise.all(compare && pool.length > 1 ? [rollInto(0), rollInto(1)] : [rollInto(0)]);
     } catch (e) {
+      setSlots([]);
+      slotIds.current = [];
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
-      setBusy(false);
+      setSearching(false);
     }
   }
 
-  // After "Not for us": drop the current place for good and move on.
-  function hideCurrent() {
-    matches.current = matches.current.filter((m) => m.id !== current?.id);
-    queue.current = queue.current.filter((m) => m.id !== current?.id);
-    if (matches.current.length === 0) {
-      setCurrent(null);
-      setError("That was the last match. Try a new search.");
+  // Compare on: keep what's showing and roll a challenger next to it.
+  // Compare off: keep the kept (or currently visible) card only.
+  function setCompareMode(on: boolean) {
+    setCompare(on);
+    setError(null);
+    if (on && slots.length === 1 && slots[0].status === "ready") {
+      rollInto(1).then(() => revealCard(1));
+    } else if (!on && slots.length > 1) {
+      const keep = slots.find((s) => s.id === keptId) ?? slots[visibleIndex] ?? slots[0];
+      slotIds.current = [keep.id];
+      setSlots([keep]);
+      setKeptId(null);
+      setVisibleIndex(0);
+    }
+  }
+
+  // Replace whichever card isn't kept (or both if neither is).
+  async function rollChallenger() {
+    setError(null);
+    const keptIndex = slots.findIndex((s) => s.id === keptId);
+    if (keptIndex === -1) {
+      await Promise.all([rollInto(0), rollInto(1)]);
+      await revealCard(0);
+    } else {
+      const other = keptIndex === 0 ? 1 : 0;
+      await rollInto(other);
+      await revealCard(other);
+    }
+  }
+
+  // After "Not for us": drop that place for good and roll a replacement.
+  function hide(index: number) {
+    const id = slots[index]?.id;
+    matches.current = matches.current.filter((m) => m.id !== id);
+    queue.current = queue.current.filter((m) => m.id !== id);
+    if (keptId === id) setKeptId(null);
+    if (matches.current.length === slots.length - 1) {
+      // Nothing left to replace it with.
+      slotIds.current.splice(index, 1);
+      setSlot(index, null);
+      if (matches.current.length === 0) setError("That was the last match. Try a new search.");
       return;
     }
-    reroll();
+    rollInto(index);
   }
 
-  async function reroll() {
-    if (queue.current.length === 0) {
-      // Everything has been shown once; reshuffle, but don't repeat the current one first.
-      queue.current = shuffle(matches.current.filter((m) => m.id !== current?.id));
-      const same = matches.current.find((m) => m.id === current?.id);
-      if (same) queue.current.push(same);
-    }
-    // Never show the same place twice in a row.
-    if (queue.current.length > 1 && queue.current[0].id === current?.id) {
-      queue.current.push(queue.current.shift()!);
-    }
-    const pick = queue.current.shift();
-    if (!pick) return;
-    setRemaining(queue.current.length);
-    setBusy(true);
-    setError(null);
-    try {
-      await reveal(pick, matches.current);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const renderSlot = (slot: Slot, index: number) =>
+    slot.status === "rolling" ? (
+      <div className={`${cardClass} flex min-h-64 flex-col items-center justify-center text-center`}>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted">
+          <span className="inline-block animate-spin">🎲</span> Rolling
+        </p>
+        <p className="mt-2 w-full truncate text-2xl font-semibold text-accent">{slot.name}</p>
+      </div>
+    ) : (
+      <ResultCard
+        place={slot.place}
+        sample={sample}
+        remaining={remaining}
+        onReroll={compare ? undefined : () => rollInto(0)}
+        keep={compare ? { kept: keptId === slot.id, onToggle: () => setKeptId(keptId === slot.id ? null : slot.id) } : undefined}
+      >
+        <PlaceActions key={slot.id} place={slot.place} onHidden={() => hide(index)} />
+      </ResultCard>
+    );
 
   return (
     <div className="space-y-5">
@@ -233,7 +334,7 @@ export function Picker() {
         className={`${cardClass} space-y-6`}
         onSubmit={(e) => {
           e.preventDefault();
-          spin();
+          search();
         }}
       >
         <div>
@@ -292,71 +393,137 @@ export function Picker() {
           <CuisinePicker selected={cuisines} onChange={setCuisines} />
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-2">
-          <fieldset>
-            <legend className={label}>
-              Price {prices.length === 0 && <span className="font-normal text-muted">· any</span>}
-            </legend>
-            <div className="flex gap-2">
-              {([1, 2, 3, 4] as PriceLevel[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  aria-pressed={prices.includes(p)}
-                  onClick={() => togglePrice(p)}
-                  className={`${chipClass} flex-1`}
-                >
-                  {priceText(p)}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+        <fieldset>
+          <legend className={label}>
+            Style {styles.length === 0 && <span className="font-normal text-muted">· any</span>}
+          </legend>
+          <div className="flex flex-wrap gap-2">
+            {STYLES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                aria-pressed={styles.includes(s.id)}
+                onClick={() => setStyles(toggle(styles, s.id))}
+                className={chipClass}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
-          <fieldset>
-            <legend className={label}>Rating</legend>
-            <div className="flex gap-2">
-              {[0, 3.5, 4, 4.5].map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  aria-pressed={minRating === r}
-                  onClick={() => setMinRating(r)}
-                  className={`${chipClass} flex-1 whitespace-nowrap px-2`}
-                >
-                  {r === 0 ? "Any" : `${r.toFixed(1)}+`}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-        </div>
+        <fieldset>
+          <legend className={label}>
+            Price {prices.length === 0 && <span className="font-normal text-muted">· any</span>}
+          </legend>
+          <div className="flex gap-2">
+            {([1, 2, 3, 4] as PriceLevel[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={prices.includes(p)}
+                onClick={() => setPrices(toggle(prices, p).sort())}
+                className={`${chipClass} flex-1`}
+              >
+                {priceText(p)}
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
-        <div className="space-y-2.5">
-          <label className="flex items-center gap-2.5 text-sm">
-            <input
-              type="checkbox"
-              checked={openNow}
-              onChange={(e) => setOpenNow(e.target.checked)}
-              className="h-4 w-4 accent-accent"
-            />
-            Only places open right now
-          </label>
-          {couple && (
-            <label className="flex items-center gap-2.5 text-sm">
-              <input
-                type="checkbox"
-                checked={includeVisited}
-                onChange={(e) => setIncludeVisited(e.target.checked)}
-                className="h-4 w-4 accent-accent"
+        <div>
+          <button
+            type="button"
+            aria-expanded={showMore}
+            onClick={() => setShowMore(!showMore)}
+            className="flex w-full items-center justify-between text-sm font-medium"
+          >
+            <span>
+              More filters
+              {moreCount > 0 && (
+                <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent">{moreCount}</span>
+              )}
+            </span>
+            <svg
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+              className={`h-4 w-4 text-muted transition-transform ${showMore ? "rotate-180" : ""}`}
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.2 7.2a.75.75 0 0 1 1.06 0L10 10.94l3.74-3.74a.75.75 0 1 1 1.06 1.06l-4.27 4.27a.75.75 0 0 1-1.06 0L5.2 8.26a.75.75 0 0 1 0-1.06Z"
               />
-              Include places we&rsquo;ve been
-            </label>
+            </svg>
+          </button>
+          {showMore && (
+            <div className="mt-4 space-y-5">
+              <fieldset>
+                <legend className={label}>Minimum rating</legend>
+                <div className="flex gap-2">
+                  {[0, 3.5, 4, 4.5].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      aria-pressed={minRating === r}
+                      onClick={() => setMinRating(r)}
+                      className={`${chipClass} flex-1 whitespace-nowrap px-2`}
+                    >
+                      {r === 0 ? "Any" : `${r.toFixed(1)}+`}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="space-y-2.5">
+                <label className="flex items-center gap-2.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={openNow}
+                    onChange={(e) => setOpenNow(e.target.checked)}
+                    className="h-4 w-4 accent-accent"
+                  />
+                  Only places open right now
+                </label>
+                {couple && (
+                  <label className="flex items-center gap-2.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={includeVisited}
+                      onChange={(e) => setIncludeVisited(e.target.checked)}
+                      className="h-4 w-4 accent-accent"
+                    />
+                    Include places we&rsquo;ve been
+                  </label>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
-        <button type="submit" disabled={busy} className={`${primaryButton} w-full py-3 text-base`}>
-          <span aria-hidden="true" className="text-lg leading-none">🎲</span>
-          {busy ? "Rolling…" : "Roll the dice"}
-        </button>
+        <div className="space-y-3 border-t border-border pt-5">
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <span>
+              <span className="block text-sm font-medium">Compare mode</span>
+              <span className="block text-xs text-muted">Roll two, swipe between them, keep the winner</span>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={compare}
+              onChange={(e) => setCompareMode(e.target.checked)}
+              disabled={busy}
+              className="peer sr-only"
+            />
+            <span
+              aria-hidden="true"
+              className="relative h-6 w-11 shrink-0 rounded-full bg-border transition-colors peer-checked:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"
+            />
+          </label>
+          <button type="submit" disabled={busy} className={`${primaryButton} w-full py-3 text-base`}>
+            <span aria-hidden="true" className="text-lg leading-none">🎲</span>
+            {busy ? "Rolling…" : compare ? "Roll two to compare" : "Roll the dice"}
+          </button>
+        </div>
       </form>
 
       {error && (
@@ -368,19 +535,70 @@ export function Picker() {
         </p>
       )}
 
-      {shufflingName && (
-        <div className={`${cardClass} py-10 text-center`}>
-          <p className="text-xs font-medium uppercase tracking-wider text-muted">
-            <span className="inline-block animate-spin">🎲</span> Rolling
-          </p>
-          <p className="mt-2 truncate text-2xl font-semibold text-accent">{shufflingName}</p>
-        </div>
-      )}
+      {slots.length === 1 && !compare && renderSlot(slots[0], 0)}
 
-      {current && !shufflingName && (
-        <ResultCard place={current} sample={sample} onReroll={reroll} remaining={remaining}>
-          <PlaceActions key={current.id} place={current} onHidden={hideCurrent} />
-        </ResultCard>
+      {compare && slots.length > 0 && (
+        <section aria-label="Compare restaurants" className="space-y-3">
+          {slots.length > 1 && (
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => scrollToCard(0)}
+                disabled={visibleIndex === 0}
+                aria-label="Previous"
+                className={`${secondaryButton} px-3 py-1.5 disabled:opacity-30`}
+              >
+                ‹
+              </button>
+              <div className="flex items-center gap-2 text-sm text-muted">
+                {slots.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => scrollToCard(i)}
+                    aria-label={`Show option ${i + 1}`}
+                    className={`h-2 rounded-full transition-all ${i === visibleIndex ? "w-6 bg-accent" : "w-2 bg-border"}`}
+                  />
+                ))}
+                <span className="ml-1">Swipe to compare</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => scrollToCard(1)}
+                disabled={visibleIndex === slots.length - 1}
+                aria-label="Next"
+                className={`${secondaryButton} px-3 py-1.5 disabled:opacity-30`}
+              >
+                ›
+              </button>
+            </div>
+          )}
+
+          <div
+            ref={carousel}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              setVisibleIndex(Math.round(el.scrollLeft / cardStep(el)));
+            }}
+            className="flex snap-x snap-mandatory items-start gap-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {slots.map((slot, i) => (
+              <div key={i} className="w-full shrink-0 snap-start">
+                {renderSlot(slot, i)}
+              </div>
+            ))}
+          </div>
+
+          {slots.length > 1 && (
+            <button type="button" onClick={rollChallenger} disabled={busy} className={`${primaryButton} w-full`}>
+              <span aria-hidden="true">🎲</span>
+              {keptId ? "Roll a challenger" : "Re-roll both"}
+            </button>
+          )}
+          {slots.length > 1 && !keptId && (
+            <p className="text-center text-xs text-muted">Tap &ldquo;Keep&rdquo; on your favorite to roll a challenger against it.</p>
+          )}
+        </section>
       )}
     </div>
   );

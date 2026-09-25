@@ -53,10 +53,21 @@ export function CuisinePicker({ selected, onChange }: Props) {
     a.label.localeCompare(b.label),
   );
 
-  // "Thai, Sushi +2"
-  const labels = selected.map(cuisineLabel);
+  // "Thai, Sushi +2", or "All except Mexican, Burgers" when most are ticked.
+  const list = (types: string[]) => {
+    const labels = types.map(cuisineLabel);
+    return labels.slice(0, 2).join(", ") + (labels.length > 2 ? ` +${labels.length - 2}` : "");
+  };
+  const unselected = CUISINES.filter((c) => !selected.includes(c.type)).map((c) => c.type);
   const summary =
-    labels.length === 0 ? "Any cuisine" : labels.slice(0, 2).join(", ") + (labels.length > 2 ? ` +${labels.length - 2}` : "");
+    selected.length === 0 || unselected.length === 0
+      ? selected.length === 0
+        ? "Any cuisine"
+        : "All cuisines"
+      : selected.length > CUISINES.length / 2
+        ? `All except ${list(unselected)}`
+        : list(selected);
+  const allSelected = unselected.length === 0;
 
   const option = (c: (typeof CUISINES)[number]) => {
     const checked = selected.includes(c.type);
@@ -142,15 +153,25 @@ export function CuisinePicker({ selected, onChange }: Props) {
             {matches.length === 0 && <li className="px-3 py-4 text-center text-muted">No cuisines match &ldquo;{query}&rdquo;</li>}
           </ul>
 
-          <div className="flex items-center justify-between border-t border-border px-3 py-2">
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              disabled={selected.length === 0}
-              className="text-sm text-muted hover:text-foreground disabled:opacity-40"
-            >
-              Clear
-            </button>
+          <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
+            <div className="flex gap-4 text-sm">
+              <button
+                type="button"
+                onClick={() => onChange(CUISINES.map((c) => c.type))}
+                disabled={allSelected}
+                className="font-medium text-accent hover:text-accent-hover disabled:opacity-40"
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                disabled={selected.length === 0}
+                className="text-muted hover:text-foreground disabled:opacity-40"
+              >
+                Clear
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => setOpen(false)}

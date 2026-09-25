@@ -1,3 +1,5 @@
+import type { Style } from "./types";
+
 // Cuisine options shown in the dropdown. `type` is Google's place type name
 // (see "Table A" in the Places API docs).
 
@@ -11,6 +13,7 @@ export const CUISINES = [
   { type: "chinese_restaurant", label: "Chinese" },
   { type: "french_restaurant", label: "French" },
   { type: "greek_restaurant", label: "Greek" },
+  { type: "halal_restaurant", label: "Halal" },
   { type: "indian_restaurant", label: "Indian" },
   { type: "italian_restaurant", label: "Italian" },
   { type: "japanese_restaurant", label: "Japanese" },
@@ -29,7 +32,7 @@ export const CUISINES = [
   { type: "vietnamese_restaurant", label: "Vietnamese" },
 ] as const;
 
-// Shown first in the picker; the rest are behind a "More" button.
+// Shown first in the picker, under "Popular".
 export const POPULAR_CUISINES = [
   "italian_restaurant",
   "mexican_restaurant",
@@ -45,4 +48,31 @@ export const POPULAR_CUISINES = [
 
 export function cuisineLabel(type: string): string {
   return CUISINES.find((c) => c.type === type)?.label ?? "Restaurant";
+}
+
+// Kinds of place. `searchType`/`query` are used when searching for this style
+// directly; `types` decides whether a result counts as this style.
+export const STYLES: {
+  id: Style;
+  label: string;
+  searchType: string;
+  query: string;
+  types: string[];
+}[] = [
+  { id: "fast_food", label: "Fast food", searchType: "fast_food_restaurant", query: "fast food", types: ["fast_food_restaurant"] },
+  // Google has no "fast casual" or "sit-down" type: casual = not fast food, not fine dining.
+  { id: "casual", label: "Casual", searchType: "restaurant", query: "places to eat", types: [] },
+  { id: "fine_dining", label: "Fine dining", searchType: "fine_dining_restaurant", query: "fine dining", types: ["fine_dining_restaurant"] },
+  { id: "bar", label: "Bar & pub", searchType: "bar", query: "bars and pubs", types: ["bar", "pub", "bar_and_grill", "wine_bar", "sports_bar", "brewpub", "cocktail_bar"] },
+  { id: "cafe", label: "Café", searchType: "cafe", query: "cafes", types: ["cafe", "coffee_shop", "bakery", "tea_house"] },
+];
+
+export function matchesStyle(types: string[], price: number | undefined, styles: Style[]): boolean {
+  if (styles.length === 0) return true;
+  const has = (list: string[]) => list.some((t) => types.includes(t));
+  return styles.some((s) => {
+    if (s === "casual") return !has(["fast_food_restaurant", "fine_dining_restaurant"]) && price !== 4;
+    if (s === "fine_dining" && price === 4) return true;
+    return has(STYLES.find((x) => x.id === s)!.types);
+  });
 }

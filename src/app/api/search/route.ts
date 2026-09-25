@@ -1,9 +1,9 @@
-import { CUISINES } from "@/lib/cuisines";
+import { CUISINES, STYLES } from "@/lib/cuisines";
 import { applyFilters, oneLocationPerName } from "@/lib/filters";
 import { MAX_RADIUS_MILES } from "@/lib/geo";
 import { hasGoogleKey, searchRestaurants } from "@/lib/google";
 import { mockSearch } from "@/lib/mock";
-import type { PriceLevel, SearchFilters } from "@/lib/types";
+import type { PriceLevel, SearchFilters, Style } from "@/lib/types";
 
 // POST /api/search  body: SearchFilters  ->  { results, sample }
 export async function POST(request: Request) {
@@ -44,6 +44,9 @@ function parseFilters(body: unknown): SearchFilters | null {
     location: { lat, lng },
     radiusMiles: Math.min(Math.max(radius, 0.5), MAX_RADIUS_MILES),
     cuisines: [...new Set(cuisines)],
+    styles: [...new Set(Array.isArray(b.styles) ? b.styles.map(String) : [])].filter((s): s is Style =>
+      STYLES.some((x) => x.id === s),
+    ),
     prices,
     // If you pick a price, places with no price listed on Google are left out.
     includeUnknownPrice: b.includeUnknownPrice === true,

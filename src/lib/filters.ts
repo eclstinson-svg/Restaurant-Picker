@@ -21,12 +21,21 @@ export function applyFilters(
   });
 }
 
+// "El Pollo Rico #12" / "Kerbey Lane Cafe - Mueller" / "Torchy's (Downtown)"
+// -> "elpollorico" / "kerbeylanecafe" / "torchys"
+function chainKey(name: string): string {
+  return name
+    .toLowerCase()
+    .split(/\s[-–—@|]\s|\s#|\s?\(|,/)[0]
+    .replace(/[^a-z0-9]/g, "");
+}
+
 // Chains show up once per location ("Chipotle" x3). Keep only the closest
 // location of each name so a re-roll doesn't feel like a repeat.
 export function oneLocationPerName(places: RestaurantSummary[]): RestaurantSummary[] {
   const byName = new Map<string, RestaurantSummary>();
   for (const p of places) {
-    const key = p.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const key = chainKey(p.name) || p.id;
     const existing = byName.get(key);
     if (!existing || p.distanceMiles < existing.distanceMiles) byName.set(key, p);
   }

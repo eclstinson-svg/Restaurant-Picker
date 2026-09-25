@@ -4,6 +4,9 @@ export type PriceLevel = 1 | 2 | 3 | 4; // $ .. $$$$
 
 export type LatLng = { lat: number; lng: number };
 
+// Kind of place, independent of cuisine.
+export type Style = "fast_food" | "casual" | "fine_dining" | "bar" | "cafe";
+
 // One row in the location search dropdown.
 export type Suggestion = { id: string; main: string; secondary: string };
 
@@ -27,6 +30,7 @@ export type SearchFilters = {
   location: LatLng;
   radiusMiles: number;
   cuisines: string[]; // Google place types, e.g. "italian_restaurant"; empty = any
+  styles: Style[]; // kind of place; empty = any
   prices: PriceLevel[]; // empty = any price
   includeUnknownPrice: boolean; // many places have no price listed on Google
   minRating: number; // 0 = any
